@@ -1,0 +1,62 @@
+ curl http://localhost:8090/api/v1/health
+{"status":"healthy","service":"MNP Gateway API","version":"1.0.0","timestamp":1759602021.7271955}
+
+curl http://localhost:8090
+{"message":"MNP Gateway Service is running"}
+
+adminer
+root:root
+http://localhost:8060/?server=db&username=pondphone&db=mnp_database
+
+-- Create the database
+CREATE DATABASE mnp_database CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- Or if database exists but user lacks permissions:
+GRANT ALL PRIVILEGES ON mnp_database.* TO 'pondphone'@'%';
+FLUSH PRIVILEGES;
+
+SET NAMES utf8;
+SET time_zone = '+00:00';
+SET foreign_key_checks = 0;
+SET sql_mode = 'NO_AUTO_VALUE_ON_ZERO';
+
+SET NAMES utf8mb4;
+
+DROP TABLE IF EXISTS `portability_requests`;
+CREATE TABLE `portability_requests` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `session_code` varchar(255) DEFAULT NULL COMMENT 'codigoSesion',
+  `request_type` varchar(255) DEFAULT NULL COMMENT 'eg port_in or port_out',
+  `status_bss` varchar(255) DEFAULT NULL COMMENT 'status of bss query',
+  `status_nc` varchar(255) DEFAULT NULL COMMENT 'status of nc query',
+  `request_date` date DEFAULT NULL COMMENT 'fechaSolicitudPorAbonado',
+  `description` varchar(255) DEFAULT NULL COMMENT 'eg Solicitud creada exitosamente',
+  `donor_operator` varchar(50) DEFAULT NULL COMMENT 'codigoOperadorDonante',
+  `recipient_operator` varchar(50) DEFAULT NULL COMMENT 'codigoOperadorReceptor',
+  `id_type` varchar(20) DEFAULT NULL COMMENT 'abonado.documentoIdentificacion.tipo',
+  `id_number` varchar(50) DEFAULT NULL COMMENT 'abonado.documentoIdentificacion.documento',
+  `contract_code` varchar(100) DEFAULT NULL COMMENT 'codigoContrato',
+  `nrn_receptor` varchar(100) DEFAULT NULL COMMENT 'NRNReceptor',
+  `porting_window_date` date DEFAULT NULL COMMENT 'fechaVentanaCambio',
+  `iccid` varchar(20) DEFAULT NULL COMMENT 'ICCID',
+  `msisdn` varchar(15) DEFAULT NULL COMMENT 'MSISDN',
+  `phone_number` varchar(15) DEFAULT NULL COMMENT 'Alternative to MSISDN',
+  `status` enum('PENDING_SUBMIT','ASOL','ACON','AREC','APOR') CHARACTER SET ascii COLLATE ascii_bin DEFAULT 'PENDING_SUBMIT',
+  `response_status` varchar(255) DEFAULT NULL COMMENT 'resopnce status, eg 200',
+  `requested_at` datetime DEFAULT current_timestamp(),
+  `scheduled_at` datetime DEFAULT NULL COMMENT 'time if future for the next query to NC',
+  `actual_porting_time` datetime DEFAULT NULL,
+  `rejection_reason` text CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish_ci DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
+  `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `next_check_at` datetime DEFAULT NULL,
+  `check_status` enum('PENDING','IN_PROGRESS','COMPLETED','FAILED') DEFAULT 'PENDING',
+  `retry_count` int(11) DEFAULT 0,
+  `last_checked_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_session_code` (`session_code`),
+  KEY `idx_msisdn` (`msisdn`),
+  KEY `idx_phone_number` (`phone_number`),
+  KEY `idx_status` (`status`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

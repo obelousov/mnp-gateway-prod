@@ -1,0 +1,168 @@
+services:
+  api:
+    container_name: mnp-api
+    build: .
+    # For production (uses Dockerfile CMD):
+    #   (no command specified - uses Dockerfile's CMD)
+    #
+    # For development (override command):
+    # command: uvicorn main1:app --host 0.0.0.0 --port 8090 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8090 --reload
+    volumes:
+      - .:/app  # Mount current directory for live reload
+      - ./logs:/var/log
+      # - xml:/xml
+    ports:
+      - "8090:8090"
+    environment:
+      # LOG_PATH: "/opt/Roamware/logs/mrf/log.json"
+      LOG_PATH: "/var/log/mnp/log.json"
+      DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - internal-network
+      # XML_PATH: "/xml"
+    # depends_on:
+    #   - redis
+    restart: unless-stopped
+  # redis:
+  #   image: "redis:alpine"
+  #   container_name: redis
+  #   ports:
+  #     - "6379:6379"
+  db:
+    image: mariadb:latest
+    container_name: db-mnp
+    env_file:
+      - .env
+    environment:
+      - MYSQL_BIND_ADDRESS=0.0.0.0  # Listen on all interfaces within container
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    # ports:
+    #   # - "3307:3306"
+    #   - "127.0.0.1:3307:3306"  # Only expose on host's localhost
+    networks:
+      - internal-network
+    healthcheck:
+      # test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MARIADB_ROOT_PASSWORD}"]
+      # test: ["CMD-SHELL", "timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/3306' && echo 'Port open' || exit 1"]
+      test: ["CMD-SHELL", "ps aux | grep -q 'mariadbd' && echo 'Process running' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: "redis:alpine"
+    container_name: redis-mnp
+    command: redis-server --appendonly yes  # Enable persistence
+    volumes:
+      - redis_data:/data  # Persistent volume for Redis data
+    networks:
+      - internal-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 10s
+      retries: 5
+    ports:
+     - "127.0.0.1:6379:6379"  # Only expose on host's localhost
+    restart: unless-stopped
+
+  celery-worker:
+    build: .
+    container_name: celery-worker-mnp
+    environment:
+      DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+      # REDIS_URL: "redis://redis:6379/0"
+      REDIS_URL: "${REDIS_URL}"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - ./logs:/var/log
+    networks:
+      - internal-network
+    command: celery -A celery_app:app worker --loglevel=info
+    # command: celery -A celery_app:app worker --loglevel=info --uid=celery
+    restart: unless-stopped
+
+# Beat scheduler
+  celery-beat:
+    build: .
+    container_name: celery-beat-mnp
+    environment:
+      DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+      # REDIS_URL: "redis://redis:6379/0"
+      REDIS_URL: "${REDIS_URL}"
+    depends_on:
+      - db
+      - redis
+      - celery-worker
+    volumes:
+      - .:/app
+      - celery_beat_data:/var/lib/celery  # Persistent volume for beat schedule file
+      - ./logs:/var/log
+    networks:
+      - internal-network
+    # command: celery -A celery_app beat --loglevel=info
+    command: celery -A celery_app beat --loglevel=info --schedule=/var/lib/celery/celerybeat-schedule
+    restart: unless-stopped
+
+# Flower Monitoring Service
+  flower:
+    # image: mher/flower:1.2.0
+    build: .  # Use your own build instead of official image
+    container_name: flower-monitor-mnp
+    environment:
+      DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+      FLOWER_BASIC_AUTH: "admin:admin"  # Set your desired username and password
+    depends_on:
+      - redis
+      - celery-worker
+    volumes:
+      - .:/app
+    networks:
+      - internal-network
+    # command: celery -A celery_app:app flower --port=5555 --broker=redis://redis:6379/0
+    command: celery -A celery_app:app --broker=redis://redis:6379/0 flower --port=5555
+    ports:
+     - "127.0.0.1:5555:5555"  # Only expose on host's localhost
+      # - "5555:5555"
+    restart: unless-stopped
+
+  adminer:
+    image: adminer
+    container_name: adminer-mnp
+    ports:
+      # - "8060:8080"
+      - "127.0.0.1:8060:8080"  # Only expose on host's localhost
+    depends_on:
+      - db
+    networks:
+      - internal-network
+    restart: unless-stopped
+
+volumes:
+  logs:
+  db_data:
+  redis_data:
+  celery_beat_data:  # New volume for Celery Beat persistence
+
+networks:
+  internal-network:
+    driver: bridge
+    # internal: true  # Makes network internal, no external access

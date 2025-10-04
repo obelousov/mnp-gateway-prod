@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+gunicorn
+python-dotenv
+python-multipart
+aiofiles
+loguru
+dotenv
+pydantic
+mysql-connector-python
+email-validator>=1.3.0  # Add this line
+zeep[async]
+aiohttp
+asyncio
+celery
+redis
+flower
