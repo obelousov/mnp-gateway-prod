@@ -11,11 +11,11 @@ app = FastAPI(
 )
 
 # Include routers
-# app.include_router(
-#     bss_requests.router, 
-#     prefix=settings.API_V1_PREFIX,      # Refer as settings.API_V1_PREFIX
-#     tags=["BSS Requests"]
-# )
+app.include_router(
+    bss_requests.router, 
+    prefix=settings.API_V1_PREFIX,      # Refer as settings.API_V1_PREFIX
+    tags=["BSS Requests"]
+)
 app.include_router(
     health.router, 
     prefix=settings.API_V1_PREFIX,      # Refer as settings.API_V1_PREFIX

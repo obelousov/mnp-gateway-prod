@@ -4,6 +4,9 @@
 curl http://localhost:8090
 {"message":"MNP Gateway Service is running"}
 
+curl -X POST http://localhost:8090/api/v1/query-msisdn
+{"status":"MSISDN Query accepted","service":"Gateway for handling MNP queries between BSS and Central Node","version":"1.0.0","timestamp":1759611472.214557}
+
 adminer
 root:root
 http://localhost:8060/?server=db&username=pondphone&db=mnp_database
@@ -60,3 +63,7 @@ CREATE TABLE `portability_requests` (
   KEY `idx_status` (`status`),
   KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+flower:
+http://localhost:5555/
+admin: admin
