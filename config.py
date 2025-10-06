@@ -72,6 +72,19 @@ class Settings:
     SOAP_NS = "http://schemas.xmlsoap.org/soap/envelope/"
     POR_NS = "http://nc.aopm.es/v1-10/portabilidad"
     V1_NS = "http://nc.aopm.es/v1-10"
+
+    # working hours swrrings
+    MORNING_WINDOW_START = int(os.getenv('MORNING_WINDOW_START', "8"))
+    MORNING_WINDOW_END = int(os.getenv('MORNING_WINDOW_END', "14")  )
+    AFTERNOON_WINDOW_START = int(os.getenv('AFTERNOON_WINDOW_START', "14"))
+    AFTERNOON_WINDOW_END = int(os.getenv('AFTERNOON_WINDOW_END', "20"))
+
+    # Jitter configuration - spread tasks over this many minutes
+    JITTER_WINDOW_MINUTES = int(os.getenv('JITTER_WINDOW_MINUTES', '30'))  # Spread over 30 minutes
+    JITTER_WINDOW_SECONDS = int(os.getenv('JITTER_WINDOW_SECONDS', '60'))  # Spread over 1 minute
+
+    TIME_DELTA_FOR_STATUS_CHECK = int(os.getenv('TIME_DELTA_FOR_STATUS_CHECK', '15'))  # 15 minutes
+
     # Database configuration as dict (for existing db_utils compatibility)
     @property
     def mysql_config(self) -> dict:

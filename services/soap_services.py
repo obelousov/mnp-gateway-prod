@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from typing import Dict, List, Optional, Tuple
 # from db_utils import get_db_connection
 from services.database_service import get_db_connection
+from templates.soap_templates import PORTABILITY_REQUEST_TEMPLATE, CHECK_PORT_IN_STATUS_TEMPLATE
 
 
 # Namespace definitions
@@ -156,31 +157,7 @@ def json_from_db_to_soap(json_data):
         if isinstance(value, (date, datetime)):
             return value.strftime('%Y-%m-%d')
         return str(value) if value is not None else ''
-    
-    soap_template = """<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <por:peticionCrearSolicitudIndividualAltaPortabilidadMovil>
-         <v1:codigoSesion>{session_code}</v1:codigoSesion>
-         <por:fechaSolicitudPorAbonado>{request_date}</por:fechaSolicitudPorAbonado>
-         <por:codigoOperadorDonante>{donor_operator}</por:codigoOperadorDonante>
-         <por:codigoOperadorReceptor>{recipient_operator}</por:codigoOperadorReceptor>
-         <por:abonado>
-            <v1:documentoIdentificacion>
-               <v1:tipo>{id_type}</v1:tipo>
-               <v1:documento>{id_number}</v1:documento>
-            </v1:documentoIdentificacion>
-            <v1:datosPersonales/>
-         </por:abonado>
-         <por:codigoContrato>{contract_code}</por:codigoContrato>
-         <por:NRNReceptor>{nrn_receptor}</por:NRNReceptor>
-         {fecha_ventana_optional}
-         {iccid_optional}
-         <por:MSISDN>{msisdn}</por:MSISDN>
-      </por:peticionCrearSolicitudIndividualAltaPortabilidadMovil>
-   </soapenv:Body>
-</soapenv:Envelope>"""
-    
+      
     # Handle optional fields
     fecha_ventana_optional = ""
     if json_data.get('porting_window_date'):
@@ -190,7 +167,8 @@ def json_from_db_to_soap(json_data):
     if json_data.get('iccid'):
         iccid_optional = f"<por:ICCID>{json_data['iccid']}</por:ICCID>"
     
-    return soap_template.format(
+    # return soap_template.format(
+    return PORTABILITY_REQUEST_TEMPLATE.format(
         session_code=json_data.get('session_code', ''),
         request_date=format_date(json_data.get('request_date')),
         donor_operator=json_data.get('donor_operator', ''),
@@ -253,7 +231,11 @@ def create_status_check_soap(mnp_request_id):
   </soapenv:Envelope>
     """
 
-    return soap_template.format(
+    # return soap_template.format(
+    #     session_code=mnp_request.get('session_code', ''),
+    #     msisdn=mnp_request.get('msisdn')
+    # )
+    return CHECK_PORT_IN_STATUS_TEMPLATE.format(
         session_code=mnp_request.get('session_code', ''),
         msisdn=mnp_request.get('msisdn')
     )

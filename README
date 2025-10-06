@@ -67,3 +67,5 @@ CREATE TABLE `portability_requests` (
 flower:
 http://localhost:5555/
 admin: admin
+
+root@7e62fac0f3f3:/app# python -m services.soap_builder

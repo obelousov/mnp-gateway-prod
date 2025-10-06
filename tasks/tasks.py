@@ -15,6 +15,9 @@ import logging
 import pytz
 # from db_utils import get_db_connection
 from services.database_service import get_db_connection
+from config import logger, settings
+from services.time_services import calculate_countdown_working_hours
+
 
 # Load environment variables from .env file
 load_dotenv()
@@ -42,6 +45,7 @@ logging.basicConfig(
 )
 
 WSDL_SERVICE_SPAIN_MOCK = os.getenv('WSDL_SERVICE_SPAIN_MOCK')
+WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = os.getenv('WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS')
 
 def get_db_connection_1():
     """Create and return MySQL database connection"""
@@ -89,7 +93,7 @@ def submit_to_central_node(self, mnp_request_id):
         # Convert JSON to SOAP request
         # soap_request = json_to_soap_request(mnp_request)
         print("Generated SOAP Request:")
-        soap_payload = json_from_db_to_soap(mnp_request)  # Your function to create SOAP
+        soap_payload = json_from_db_to_soap(mnp_request)  # function to create SOAP
         print(soap_payload)
 
         # 4. Try to send the request to Central Node
@@ -108,6 +112,11 @@ def submit_to_central_node(self, mnp_request_id):
 
         # Assign status from response_code or description as appropriate
         status = response_code  # or use description if that's the intended status
+        # status_nc="REQUEST_CONFIRMED" if response_code == 'ASOL' else "REQUEST_FAILED"
+        if response_code is not None:
+            status_nc = "REQUEST_CONFIRMED" if response_code.strip().upper() == 'ASOL' else "REQUEST_FAILED"
+        else:
+            status_nc = "REQUEST_FAILED"
 
         # 6. Update the database with response
         update_query = """
@@ -115,7 +124,7 @@ def submit_to_central_node(self, mnp_request_id):
             SET response_status = %s, description = %s, status_nc = %s, updated_at = NOW() 
             WHERE id = %s
         """
-        cursor.execute(update_query, (response_code, description, description, mnp_request_id))
+        cursor.execute(update_query, (response_code, description, status_nc, mnp_request_id))
         connection.commit()
 
         # 7. IF THE STATUS IS PENDING (e.g., 'ASOL'), QUEUE THE NEXT CHECK!
@@ -137,6 +146,7 @@ def submit_to_central_node(self, mnp_request_id):
         # Schedule the task with countdown
             check_status.apply_async(args=[mnp_request_id], countdown=countdown_seconds)
             logging.info("Scheduled check for id: %s at %s (in %s seconds)", mnp_request_id, scheduled_datetime, countdown_seconds)
+            print("Scheduled check for id: %s at %s (in %s seconds)", mnp_request_id, scheduled_datetime, countdown_seconds)
 
         # If it's a final status, callback the BSS immediately
         if status in ('ACON', 'APOR', 'RECHAZADO'):
@@ -174,29 +184,68 @@ def check_status(self, mnp_request_id):
         if result['status'] in ('ACON', 'APOR', 'RECHAZADO'):  # Final statuses
             return
 
+        status_current = result['status']
         # Prepare the SOAP 'Consultar' request for this ONE MSISDN
-        consultar_payload = create_status_check_soap(mnp_request_id)  # Your function
+        consultar_payload = create_status_check_soap(mnp_request_id)  # Check status request SOAP
 
-        response = requests.post('http://your-mockup-url', 
+        if not WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS:
+            raise ValueError("WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS environment variable is not set.")
+        response = requests.post(WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS, 
                                data=consultar_payload, 
                                headers={'Content-Type': 'text/xml'}, 
                                timeout=30)
         response.raise_for_status()
 
-        new_status = parse_soap_response(response.text)  # Parse the response
+        # new_status = parse_soap_response(response.text)  # Parse the response
+        response_code, description, session_code = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+        print(f"Received check response: response_code={response_code}, description={description}, session_code={session_code}")
+
 
         # Update the DB
-        update_query = "UPDATE portability_requests SET status = %s, updated_at = NOW() WHERE id = %s"
-        cursor.execute(update_query, (new_status, mnp_request_id))
-        connection.commit()
+        # update_query = "UPDATE portability_requests SET status = %s, updated_at = NOW() WHERE id = %s"
+        # cursor.execute(update_query, (response_code, mnp_request_id))
+        # connection.commit()
 
         # If it's still pending, queue the next check with exponential backoff
-        if new_status == 'ASOL':
-            next_check_in = 60 * (self.request.retries + 1)  # 60s, 120s, 180s...
-            check_status.apply_async(args=[mnp_request_id], countdown=next_check_in)
+        if response_code == 'ASOL':
+            # Still same status, updated scheduled_at for next check - within same timenad
+            # countdown_seconds=calculate_countdown()
+            # Convert countdown to actual datetime
+            # scheduled_datetime = datetime.now() + timedelta(seconds=countdown_seconds)
+            adjusted_delta, status, scheduled_datetime = calculate_countdown_working_hours(
+                                                        delta=settings.TIME_DELTA_FOR_STATUS_CHECK, 
+                                                        with_jitter=True
+                                                                                    )      
+            # Update database with the actual scheduled time
+            update_query = """
+                UPDATE portability_requests 
+                SET status = %s,
+                SET scheduled_at = %s,
+                updated_at = NOW() 
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (response_code,scheduled_datetime, mnp_request_id))
+            connection.commit()
+
+            # update_query = "UPDATE portability_requests SET status = %s, updated_at = NOW() WHERE id = %s"
+            # cursor.execute(update_query, (response_code, mnp_request_id))
+            # connection.commit()
+            # next_check_in = 60 * (self.request.retries + 1)  # 60s, 120s, 180s...
+            # check_status.apply_async(args=[mnp_request_id], countdown=next_check_in)
 
         # If it's a final status, callback the BSS
-        if new_status in ('ACON', 'APOR', 'RECHAZADO'):
+        if response_code in ('ACON', 'APOR', 'RECHAZADO'):
+            status_nc = "REQUEST_RESPONDED" if response_code in ('ACON', 'APOR', 'RECHAZADO') else "REQUEST_CONFIRMED"
+            update_query = """
+                UPDATE portability_requests 
+                SET status = %s,
+                SET status_nc = %s,
+                updated_at = NOW() 
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (response_code,status_nc, mnp_request_id))
+            connection.commit()
+
             callback_bss.delay(mnp_request_id)
 
     except requests.exceptions.RequestException as exc:

@@ -129,8 +129,9 @@ def get_due_requests():
     FROM portability_requests 
     WHERE check_status = 'PENDING' 
     AND retry_count < 5
-    AND (next_check_at IS NULL OR next_check_at <= NOW());
+    AND (scheduled_at IS NULL OR scheduled_at <= NOW());
     """
+    # AND (next_check_at IS NULL OR next_check_at <= NOW());
     connection = None
     try:
         connection = get_db_connection()
