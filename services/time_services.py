@@ -147,7 +147,7 @@ def calculate_countdown_working_hours(delta, with_jitter=True):
     """
     now = datetime.now()
     scheduled_datetime = now + delta
-    current_hour = now.hour
+    # current_hour = now.hour
     
     # Check if scheduled time falls within working hours and not on holiday
     def is_valid_business_time(target_dt):
@@ -167,6 +167,7 @@ def calculate_countdown_working_hours(delta, with_jitter=True):
         time_window = "current_schedule"
     else:
         status = "NEXT_TIMEBAND"
+        with_jitter=True
         
         # Find the next valid business time
         candidate_date = scheduled_datetime.date()
@@ -236,5 +237,6 @@ def schedule_task_with_countdown(initial_countdown_seconds):
 
 if __name__ == "__main__":
     # calculate_countdown()
-    calculate_countdown_working_hours(timedelta(minutes=1))
+    # calculate_countdown_working_hours(timedelta(minutes=1))
+    calculate_countdown_working_hours(timedelta(minutes=0),with_jitter=False)
 #     uvicorn.run(app, host="0.0.0.0", port=8000)

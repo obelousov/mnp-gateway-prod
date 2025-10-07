@@ -122,6 +122,43 @@ def check_single_request(request_id):
         logger.error("Request error checking request %s: %s", request_id, e)
         # Implement retry logic here
 
+def get_due_requests_1():
+    """Get requests that are due for checking"""
+    query = """
+    SELECT id 
+    FROM portability_requests 
+    WHERE check_status = 'PENDING' 
+    AND retry_count < 5
+    AND (scheduled_at IS NULL OR scheduled_at <= NOW());
+    """
+    # AND (next_check_at IS NULL OR next_check_at <= NOW());
+    connection = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute(query)
+        results = cursor.fetchall()  # Changed from fetchone() to fetchall()
+        return results  # Added return statement
+    except mysql.connector.Error as e:
+        # logging.error("Database error checking request %s", e)
+        logger.error("Database error checking request %s", e)
+        return []  # Return empty list on error
+        # Implement retry logic here
+    except requests.exceptions.RequestException as e:
+        # logging.error("Request error checking request %s",e)
+        logger.error("Request error checking request %s",e)
+        return []  # Return empty list on error
+        # Implement retry logic here
+    # except Error as e:  # Removed requests.exceptions.RequestException as it's not relevant for DB operations
+    #     print(f"Database error while fetching due requests: {e}")
+    #     return []  # Return empty list on error
+    finally:
+        # Close cursor and connection
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 def get_due_requests():
     """Get requests that are due for checking"""
     query = """
@@ -158,6 +195,7 @@ def get_due_requests():
             cursor.close()
         if connection:
             connection.close()
+
 
 def get_current_status(request_id: int) -> Optional[str]:
     """Get status of current request"""

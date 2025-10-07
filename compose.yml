@@ -19,6 +19,7 @@ services:
       LOG_PATH: "/var/log/mnp/log.json"
       DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
       REDIS_URL: "redis://redis:6379/0"
+      TZ: ${TIME_ZONE}
     depends_on:
       - db
       - redis
@@ -44,6 +45,7 @@ services:
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - TZ=${TIME_ZONE}
     volumes:
       - db_data:/var/lib/mysql
     # ports:
@@ -75,6 +77,8 @@ services:
     ports:
      - "127.0.0.1:6379:6379"  # Only expose on host's localhost
     restart: unless-stopped
+    environment:
+      - TZ=${TIME_ZONE}
 
   celery-worker:
     build: .
@@ -83,6 +87,7 @@ services:
       DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
       # REDIS_URL: "redis://redis:6379/0"
       REDIS_URL: "${REDIS_URL}"
+      TZ: ${TIME_ZONE}
     depends_on:
       db:
         condition: service_healthy
@@ -105,6 +110,7 @@ services:
       DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
       # REDIS_URL: "redis://redis:6379/0"
       REDIS_URL: "${REDIS_URL}"
+      TZ: ${TIME_ZONE}
     depends_on:
       - db
       - redis
@@ -130,6 +136,7 @@ services:
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
       FLOWER_BASIC_AUTH: "admin:admin"  # Set your desired username and password
+      TZ: ${TIME_ZONE}
     depends_on:
       - redis
       - celery-worker
@@ -155,6 +162,8 @@ services:
     networks:
       - internal-network
     restart: unless-stopped
+    environment:
+      - TZ=${TIME_ZONE}
 
 volumes:
   logs:

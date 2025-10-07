@@ -69,3 +69,4 @@ http://localhost:5555/
 admin: admin
 
 root@7e62fac0f3f3:/app# python -m services.soap_builder
+root@b56786830fcc:/app# python -m services.time_services

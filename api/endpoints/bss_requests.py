@@ -46,11 +46,11 @@ async def portin_request(alta_data: dict):
         }
         
     except Exception as e:
-        logger.error(f"Error in port-in endpoint: {str(e)}")
+        logger.error("Error in port-in endpoint: %s", str(e))  # Lazy logging
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process request: {str(e)}"
-        )
+        ) from e  # Explicit exception chaining
 
 # async def query_msisdn_details(
 #     request: MsisdnQueryRequest,

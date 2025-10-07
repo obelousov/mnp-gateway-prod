@@ -2,6 +2,8 @@ from fastapi import HTTPException
 import mysql.connector
 from mysql.connector import Error
 from config import settings, logger
+from services.time_services import calculate_countdown_working_hours
+from datetime import timedelta
 
 def get_db_connection():
     """Create and return MySQL database connection"""
@@ -35,14 +37,23 @@ def save_portin_request_db(alta_data: dict):
         request_type="port-in"
         # status_bss="bss_portin_received_by_mnp"
         status_bss="PROCESSING"
+        status_nc="PENDING_SUBMIT"
+        # scheduled_at=calculate_countdown_working_hours(timedelta(minutes=0),with_jitter=False)
+        # initial_delta = timedelta(seconds=0)
+        initial_delta = timedelta(seconds=-5)  # Negative for "before"
+        _, _, scheduled_at = calculate_countdown_working_hours(
+            delta=initial_delta, 
+            with_jitter=False)
 
         insert_query = """
             INSERT INTO portability_requests
             (session_code, request_date, donor_operator, recipient_operator, 
              id_type, id_number, contract_code, nrn_receptor, 
              porting_window_date, iccid, msisdn, phone_number,
-             status, request_type, status_bss,requested_at, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,NOW(), NOW())
+             status, request_type, status_bss,status_nc,
+             scheduled_at,
+             requested_at, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s, NOW(), NOW())
         """
         
         values = (
@@ -62,6 +73,8 @@ def save_portin_request_db(alta_data: dict):
             # alta_data.get('fechaSolicitudPorAbonado'),  # Use request date for requested_at
             request_type,
             status_bss,
+            status_nc,
+            scheduled_at,
             alta_data.get('fechaSolicitudPorAbonado'),  # Use request date for requested_at
         )
         
