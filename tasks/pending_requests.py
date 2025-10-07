@@ -6,7 +6,7 @@ import mysql.connector
 from mysql.connector import Error
 from dotenv import load_dotenv
 from services.soap_services import create_soap_payload, parse_soap_response, json_to_soap_request, json_from_db_to_soap, parse_soap_response_list, create_status_check_soap
-from services.time_services import calculate_countdown
+from services.time_services import calculate_countdown, calculate_countdown_working_hours, is_working_hours_now
 from datetime import datetime, timedelta
 import logging
 import pytz
@@ -161,6 +161,10 @@ def get_due_requests_1():
 
 def get_due_requests():
     """Get requests that are due for checking"""
+    if not is_working_hours_now():
+        print("Outside working hours, no requests will be processed now.")
+        logger.info("Outside working hours, no requests will be processed now.")
+        return []
     query = """
     SELECT id 
     FROM portability_requests 

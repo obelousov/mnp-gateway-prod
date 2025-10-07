@@ -207,15 +207,43 @@ def calculate_countdown_working_hours(delta, with_jitter=True):
         final_countdown = base_countdown + jitter_seconds
         actual_execution_time = now + timedelta(seconds=final_countdown)
         
-        logger.info("Countdown Status: %s | Base: %ss, Jitter: +%ss, Total: %ss | Window: %s | Execution: %s", 
-                    status, base_countdown, jitter_seconds, final_countdown, time_window, actual_execution_time)
-        
+        # logger.info("Countdown Status: %s | Base: %ss, Jitter: +%ss, Total: %ss | Window: %s | Execution: %s", 
+        #             status, base_countdown, jitter_seconds, final_countdown, time_window, actual_execution_time)
+        logger.info("Countdown: %s | Window: %s | Execution: %s", 
+                    status, time_window, actual_execution_time)
+
         return timedelta(seconds=final_countdown), status, actual_execution_time
     else:
-        logger.info("Countdown Status:: %s | Base: %ss (no jitter) | Window: %s | Execution: %s", 
-                    status, base_countdown, time_window, target_time)
+        # logger.info("Countdown Status:: %s | Base: %ss (no jitter) | Window: %s | Execution: %s", 
+        #             status, base_countdown, time_window, target_time)
+        logger.info("Countdown: %s | Window: %s | Execution: %s", 
+                    status, time_window, target_time)
         
         return timedelta(seconds=base_countdown), status, target_time
+
+from typing import Optional
+
+def is_working_hours_now(check_time: Optional[datetime] = None) -> bool:
+    """
+    Check if the given time (or current time) is within working hours
+    Returns True if within working hours, False otherwise
+    """
+    if check_time is None:
+        check_time = datetime.now()
+    
+    # Use the same time window constants from your existing function
+    current_hour = check_time.hour
+    
+    # Check if today is a holiday/weekend
+    if is_holiday(check_time):
+        return False
+    
+    # Check if within morning or afternoon working windows
+    if (MORNING_WINDOW_START <= current_hour < MORNING_WINDOW_END or
+        AFTERNOON_WINDOW_START <= current_hour < AFTERNOON_WINDOW_END):
+        return True
+    
+    return False
 
 def schedule_task_with_countdown(initial_countdown_seconds):
     """
@@ -238,5 +266,6 @@ def schedule_task_with_countdown(initial_countdown_seconds):
 if __name__ == "__main__":
     # calculate_countdown()
     # calculate_countdown_working_hours(timedelta(minutes=1))
-    calculate_countdown_working_hours(timedelta(minutes=0),with_jitter=False)
+    # calculate_countdown_working_hours(timedelta(minutes=0),with_jitter=False)
+    print("Is working hours now?", is_working_hours_now())
 #     uvicorn.run(app, host="0.0.0.0", port=8000)
