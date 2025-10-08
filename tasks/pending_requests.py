@@ -13,6 +13,7 @@ import pytz
 # from db_utils import get_db_connection
 from services.database_service import get_db_connection
 from config import logger
+from tasks.tasks import submit_to_central_node, check_status
 
 # Load environment variables from .env file
 load_dotenv()
@@ -67,11 +68,11 @@ def process_pending_requests():
         for request in due_requests:
             try:
                 # Mark as in progress
-                mark_request_in_progress(request['id'])
+                # mark_request_in_progress(request['id'])
                 # logging.info("Processing Request ID %s", request['id'])
                 logger.info("Processing Request ID %s", request['id'])
                 # Process the request asynchronously
-                # check_single_request.delay(request['id'])
+                check_single_request.delay(request['id'], request['status_nc'], request['session_code'], request['msisdn'])
                 processed_count += 1
                 
             except (mysql.connector.Error, requests.exceptions.RequestException) as e:
@@ -89,75 +90,61 @@ def process_pending_requests():
         logger.error("Database or request error in process_pending_requests: %s", e)
 
 @app.task
-def check_single_request(request_id):
+def check_single_request(request_id, status_nc, session_code, msisdn):
     """Check a single MNP request and schedule next check if needed"""
     try:
-        # Your existing status check logic
-        status = get_current_status(request_id)
-        if status:
-            print(f"Current status: {status}")
-        else:
-            print("Request not found")
+        a, _, _ = calculate_countdown_working_hours(
+            timedelta(minutes=0), 
+            with_jitter=True)
+        a_seconds = int(a.total_seconds())
 
-        if status == 'ASOL':
-            # Calculate next check time
-            countdown_seconds = calculate_countdown()
-            next_check_time = datetime.now() + timedelta(seconds=countdown_seconds)
-            
-            # Update database with next check time
-            update_next_check_time(request_id, next_check_time)
-            
-            logging.info("Request %s next check at %s", request_id, next_check_time)
-        else:
-            # Request completed, clear next check
-            update_next_check_time(request_id, None)
-            logging.info("Request %s completed", request_id)
-            
-    except mysql.connector.Error as e:
-        # logging.error("Database error checking request %s: %s", request_id, e)
-        logger.error("Database error checking request %s: %s", request_id, e)
-        # Implement retry logic here
-    except requests.exceptions.RequestException as e:
-        # logging.error("Request error checking request %s: %s", request_id, e)
-        logger.error("Request error checking request %s: %s", request_id, e)
-        # Implement retry logic here
+        if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION"]:
+            submit_to_central_node.apply_async(
+                args=[request_id], 
+                countdown=a_seconds
+            )
 
-def get_due_requests_1():
-    """Get requests that are due for checking"""
-    query = """
-    SELECT id 
-    FROM portability_requests 
-    WHERE check_status = 'PENDING' 
-    AND retry_count < 5
-    AND (scheduled_at IS NULL OR scheduled_at <= NOW());
-    """
-    # AND (next_check_at IS NULL OR next_check_at <= NOW());
-    connection = None
-    try:
-        connection = get_db_connection()
-        cursor = connection.cursor(dictionary=True)
-        cursor.execute(query)
-        results = cursor.fetchall()  # Changed from fetchone() to fetchall()
-        return results  # Added return statement
+        if status_nc in ["PENDING_RESPONSE"]:
+            check_status.apply_async(
+                args=[request_id,session_code,msisdn], 
+                countdown=a_seconds
+            )
+
+    except ValueError as e:
+        logger.error("Value error in check_single_request for request %s: %s", request_id, {str(e)})
+    except TypeError as e:
+        logger.error("Type error in check_single_request for request %s: %s", request_id, {str(e)})
     except mysql.connector.Error as e:
-        # logging.error("Database error checking request %s", e)
-        logger.error("Database error checking request %s", e)
-        return []  # Return empty list on error
-        # Implement retry logic here
+        logger.error("Database error in check_single_request for request %s: %s", request_id, {str(e)})
     except requests.exceptions.RequestException as e:
-        # logging.error("Request error checking request %s",e)
-        logger.error("Request error checking request %s",e)
-        return []  # Return empty list on error
-        # Implement retry logic here
-    # except Error as e:  # Removed requests.exceptions.RequestException as it's not relevant for DB operations
-    #     print(f"Database error while fetching due requests: {e}")
-    #     return []  # Return empty list on error
-    finally:
-        # Close cursor and connection
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
+        logger.error("Request error in check_single_request for request %s: %s", request_id, {str(e)})
+    # except Exception as e:
+    #     logger.error("Error in check_single_request for request %s: %s", request_id, str(e))
+    #     print(f"Error in check_single_request for request {request_id}: {str(e)}")
+    #     # Optionally re-raise if you want the task to fail
+        # raise
+    #     if status_nc == 'ASOL':
+    #         # Calculate next check time
+    #         countdown_seconds = calculate_countdown()
+    #         next_check_time = datetime.now() + timedelta(seconds=countdown_seconds)
+            
+    #         # Update database with next check time
+    #         update_next_check_time(request_id, next_check_time)
+            
+    #         logging.info("Request %s next check at %s", request_id, next_check_time)
+    #     else:
+    #         # Request completed, clear next check
+    #         update_next_check_time(request_id, None)
+    #         logging.info("Request %s completed", request_id)
+            
+    # except mysql.connector.Error as e:
+    #     # logging.error("Database error checking request %s: %s", request_id, e)
+    #     logger.error("Database error checking request %s: %s", request_id, e)
+    #     # Implement retry logic here
+    # except requests.exceptions.RequestException as e:
+    #     # logging.error("Request error checking request %s: %s", request_id, e)
+    #     logger.error("Request error checking request %s: %s", request_id, e)
+    #     # Implement retry logic here
 
 def get_due_requests():
     """Get requests that are due for checking"""
@@ -165,13 +152,20 @@ def get_due_requests():
         print("Outside working hours, no requests will be processed now.")
         logger.info("Outside working hours, no requests will be processed now.")
         return []
+    # query = """
+    # SELECT id 
+    # FROM portability_requests 
+    # WHERE check_status = 'PENDING' 
+    # AND retry_count < 5
+    # AND (scheduled_at IS NULL OR scheduled_at <= NOW());
+    # """
     query = """
-    SELECT id 
+    SELECT id, status_nc, session_code, msisdn
     FROM portability_requests 
-    WHERE check_status = 'PENDING' 
-    AND retry_count < 5
-    AND (scheduled_at IS NULL OR scheduled_at <= NOW());
+    WHERE (status_nc LIKE '%PENDING%' OR status_nc LIKE '%REQUEST_FAILED%')
+    AND (scheduled_at IS NULL OR scheduled_at <= NOW())
     """
+
     # AND (next_check_at IS NULL OR next_check_at <= NOW());
     connection = None
     try:
@@ -204,7 +198,7 @@ def get_due_requests():
 def get_current_status(request_id: int) -> Optional[str]:
     """Get status of current request"""
     query = """
-    SELECT check_status 
+    SELECT nc_status 
     FROM portability_requests 
     WHERE id = %s
     """
@@ -214,7 +208,7 @@ def get_current_status(request_id: int) -> Optional[str]:
         cursor = connection.cursor(dictionary=True)
         cursor.execute(query, (request_id,))  # Note: parameter should be a tuple
         result = cursor.fetchone()
-        return result['check_status'] if result else None
+        return result['nc_status'] if result else None
     except mysql.connector.Error as e:
         # logging.error("Database error checking request %s", e)
         logger.error("Database error checking request %s", e)

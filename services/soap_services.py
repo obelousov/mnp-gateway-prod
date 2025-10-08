@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple
 # from db_utils import get_db_connection
 from services.database_service import get_db_connection
 from templates.soap_templates import PORTABILITY_REQUEST_TEMPLATE, CHECK_PORT_IN_STATUS_TEMPLATE
+from config import logger
 
 
 # Namespace definitions
@@ -198,26 +199,28 @@ FIELD_MAPPING = {
     'msisdn': 'por:MSISDN'
 }
 
-def create_status_check_soap(mnp_request_id):
+# def create_status_check_soap(mnp_request_id, session_code, msisdn):
+def create_status_check_soap(mnp_request_id: int, session_code: str, msisdn: str) -> str:
     """
     Get request data from DB based on mnp_request_idt
     """
-    print ("received mnp_id:", mnp_request_id)
+    # print ("received mnp_id:", mnp_request_id, session_code, msisdn)
+    logger.info(f"received mnp_id: {mnp_request_id}, session_code: {session_code}, msisdn: {msisdn}")
 
     # 1. Get database connection
-    connection = get_db_connection()
-    cursor = connection.cursor(dictionary=True)
+    # connection = get_db_connection()
+    # cursor = connection.cursor(dictionary=True)
         
-    # 2. Fetch the request data from database
-    cursor.execute("SELECT session_code, msisdn FROM portability_requests WHERE id = %s", (mnp_request_id,))
-    mnp_request = cursor.fetchone()
+    # # 2. Fetch the request data from database
+    # cursor.execute("SELECT session_code, msisdn FROM portability_requests WHERE id = %s", (mnp_request_id,))
+    # mnp_request = cursor.fetchone()
         
-    if not mnp_request:
-         print(f"Request {mnp_request_id} not found in database")
-         return
+    # if not mnp_request:
+    #      print(f"Request {mnp_request_id} not found in database")
+    #      return
 
-    # 3. Prepare your SOAP envelope (use your existing logic)
-    print(f"Request {mnp_request} found, preparing SOAP payload...")
+    # # 3. Prepare your SOAP envelope (use your existing logic)
+    # print(f"Request {mnp_request} found, preparing SOAP payload...")
 
 
     soap_template = """<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
@@ -235,9 +238,17 @@ def create_status_check_soap(mnp_request_id):
     #     session_code=mnp_request.get('session_code', ''),
     #     msisdn=mnp_request.get('msisdn')
     # )
+    # return CHECK_PORT_IN_STATUS_TEMPLATE.format(
+    #     session_code=mnp_request.get('session_code', ''),
+    #     msisdn=mnp_request.get('msisdn')
+    # )
+
+    # return CHECK_PORT_IN_STATUS_TEMPLATE.format(
+    #     session_code,msisdn
+    # )
     return CHECK_PORT_IN_STATUS_TEMPLATE.format(
-        session_code=mnp_request.get('session_code', ''),
-        msisdn=mnp_request.get('msisdn')
+        session_code=session_code,
+        msisdn=msisdn
     )
 
 

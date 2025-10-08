@@ -95,6 +95,7 @@ def submit_to_central_node(self, mnp_request_id):
         cursor.execute("SELECT * FROM portability_requests WHERE id = %s AND %s > scheduled_at",(mnp_request_id, current_time))
         # cursor.execute("SELECT * FROM portability_requests WHERE id = %s AND NOW() > scheduled_at",(mnp_request_id,))
         mnp_request = cursor.fetchone()
+        status_nc_old = mnp_request['status_nc'] if mnp_request else 'NOT_FOUND'
         
         if not mnp_request:
             print(f"Submit to NC: request {mnp_request_id} not found or not yet scheduled")
@@ -127,28 +128,77 @@ def submit_to_central_node(self, mnp_request_id):
         print(f"Submit to NC: Received response: response_code={response_code}, description={description}, session_code={session_code}")
 
         # Assign status based on response_code
-        if response_code is not None:
+        if not response_code or not response_code.strip():
+            status_nc = "PENDING_NO_RESPONSE_CODE_RECEIVED"
+        else:
             response_code_upper = response_code.strip().upper()
-        else:
-            response_code_upper = ''
-            status_nc = "NO_RESPONSE_CODE_RECEIVED"  # No response code received
-    
-        if response_code_upper == 'ASOL':
-            status_nc = "PENDING_RESPONSE"  # Request accepted, waiting for final response
-        else:
-            status_nc = "PENDING_CONFIRMATION"  # Other response codes need confirmation
+            status_nc = "PENDING_RESPONSE" if response_code_upper == 'ASOL' else "PENDING_CONFIRMATION"
 
-        initial_delta = timedelta(seconds=PENDING_REQUESTS_TIMEOUT)  # try again in 60 seconds
-        _, _, scheduled_at = calculate_countdown_working_hours(
-            delta=initial_delta, 
-            with_jitter=True)
+        # Check if status actually changed
+        status_changed = (status_nc != status_nc_old)
 
-        # Update the database with response
-        update_query = """
-        UPDATE portability_requests 
-        SET response_status = %s, description = %s, status_nc = %s, scheduled_at = %s, updated_at = NOW() 
-        WHERE id = %s
-        """
+        if status_changed:
+            if status_nc == "PENDING_RESPONSE":
+            # Special handling for ASOL status - reschedule at the next timeband
+                _, scheduled_at = calculate_countdown(with_jitter=True)
+                logger.info("Status changed to PENDING_RESPONSE (ASOL), rescheduling for %s", scheduled_at)
+        
+                update_query = """
+                    UPDATE portability_requests 
+                    SET status_nc = %s, scheduled_at = %s, response_status = %s, updated_at = NOW() 
+                    WHERE id = %s
+                    """
+                cursor.execute(update_query, (status_nc, scheduled_at, response_code, mnp_request_id))
+                connection.commit()
+            # else:
+                    # Other status changes - just update status and reschedule withing working hours
+            #         initial_delta = timedelta(seconds=PENDING_REQUESTS_TIMEOUT)  # try again in 60 seconds
+            #         _, _, scheduled_at = calculate_countdown_working_hours(
+            #             delta=initial_delta, 
+            #             with_jitter=True)
+
+            #         # Update the database with response
+            #         update_query = """
+            #             UPDATE portability_requests 
+            #             SET response_status = %s, description = %s, status_nc = %s, scheduled_at = %s, updated_at = NOW() 
+            #             WHERE id = %s
+            #             """
+            # cursor.execute(update_query, (status_nc, mnp_request_id))
+        else:
+            # No status change,or other status change - need to reschdeul within same timeband
+            logger.info("No status change for request %s", mnp_request_id)
+            # Other status changes - just update status and reschedule withing working hours
+            initial_delta = timedelta(seconds=PENDING_REQUESTS_TIMEOUT)  # try again in 60 seconds
+            _, _, scheduled_at = calculate_countdown_working_hours(
+                        delta=initial_delta, 
+                        with_jitter=True)
+             # Update the database with response
+            update_query = """
+                        UPDATE portability_requests 
+                        SET response_status = %s, description = %s, status_nc = %s, scheduled_at = %s, updated_at = NOW() 
+                        WHERE id = %s
+                        """
+            cursor.execute(update_query, (status_nc, mnp_request_id))
+            connection.commit()
+
+        # # Assign status based on response_code
+        # if not response_code or not response_code.strip():
+        #     status_nc = "PENDING_NO_RESPONSE_CODE_RECEIVED"
+        # else:
+        #     response_code_upper = response_code.strip().upper()
+        #     status_nc = "PENDING_RESPONSE" if response_code_upper == 'ASOL' else "PENDING_CONFIRMATION"
+
+        # initial_delta = timedelta(seconds=PENDING_REQUESTS_TIMEOUT)  # try again in 60 seconds
+        # _, _, scheduled_at = calculate_countdown_working_hours(
+        #     delta=initial_delta, 
+        #     with_jitter=True)
+
+        # # Update the database with response
+        # update_query = """
+        # UPDATE portability_requests 
+        # SET response_status = %s, description = %s, status_nc = %s, scheduled_at = %s, updated_at = NOW() 
+        # WHERE id = %s
+        # """
         # # Assign status from response_code or description as appropriate
         # status = response_code  # or use description if that's the intended status
         # # status_nc="REQUEST_CONFIRMED" if response_code == 'ASOL' else "REQUEST_FAILED"
@@ -163,8 +213,8 @@ def submit_to_central_node(self, mnp_request_id):
         #     SET response_status = %s, description = %s, status_nc = %s, updated_at = NOW() 
         #     WHERE id = %s
         # """
-        cursor.execute(update_query, (response_code, description, status_nc, scheduled_at, mnp_request_id))
-        connection.commit()
+        # cursor.execute(update_query, (response_code, description, status_nc, scheduled_at, mnp_request_id))
+        # connection.commit()
 
         # 7. IF THE STATUS IS PENDING (e.g., 'ASOL'), QUEUE THE NEXT CHECK!
         # if response_code_upper == 'ASOL':
@@ -188,8 +238,8 @@ def submit_to_central_node(self, mnp_request_id):
             # print("Submit to NC: Scheduled check for id: %s at %s (in %s seconds)", mnp_request_id, scheduled_datetime, countdown_seconds)
 
         # If it's a final status, callback the BSS immediately
-        if response_code in ('ACON', 'APOR', 'RECHAZADO'):
-            callback_bss.delay(mnp_request_id)
+        # if response_code in ('ACON', 'APOR', 'RECHAZADO'):
+        #     callback_bss.delay(mnp_request_id)
 
     except requests.exceptions.RequestException as exc:
         current_retry = self.request.retries
@@ -240,7 +290,7 @@ def submit_to_central_node(self, mnp_request_id):
             connection.close()
 
 @app.task(bind=True, max_retries=10)
-def check_status(self, mnp_request_id):
+def check_status(self, mnp_request_id, session_code, msisdn):
     """
     Task to check the status of a single MSISDN at the Central Node.
     """
@@ -249,18 +299,18 @@ def check_status(self, mnp_request_id):
         connection = get_db_connection()
         cursor = connection.cursor(dictionary=True)
         
-        # Check if request exists and is not in final status
-        cursor.execute("SELECT status FROM portability_requests WHERE id = %s", (mnp_request_id,))
-        result = cursor.fetchone()
+        # Check if request exists and is not in final status - that we check in central schedule
+        # cursor.execute("SELECT status FROM portability_requests WHERE id = %s", (mnp_request_id,))
+        # result = cursor.fetchone()
         
-        if not result:
-            return
-        if result['status'] in ('ACON', 'APOR', 'RECHAZADO'):  # Final statuses
-            return
+        # if not result:
+        #     return
+        # if result['status'] in ('ACON', 'APOR', 'RECHAZADO'):  # Final statuses
+        #     return
 
-        status_current = result['status']
+        # status_current = result['status']
         # Prepare the SOAP 'Consultar' request for this ONE MSISDN
-        consultar_payload = create_status_check_soap(mnp_request_id)  # Check status request SOAP
+        consultar_payload = create_status_check_soap(mnp_request_id, session_code, msisdn)  # Check status request SOAP
 
         if not WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS:
             raise ValueError("WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS environment variable is not set.")
@@ -271,7 +321,7 @@ def check_status(self, mnp_request_id):
         response.raise_for_status()
 
         # new_status = parse_soap_response(response.text)  # Parse the response
-        response_code, description, session_code = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+        response_code, description, _, session_code = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia","estado"])
         print(f"Received check response: response_code={response_code}, description={description}, session_code={session_code}")
 
 
@@ -286,10 +336,10 @@ def check_status(self, mnp_request_id):
             # countdown_seconds=calculate_countdown()
             # Convert countdown to actual datetime
             # scheduled_datetime = datetime.now() + timedelta(seconds=countdown_seconds)
-            adjusted_delta, status, scheduled_datetime = calculate_countdown_working_hours(
+            _, _, scheduled_datetime = calculate_countdown_working_hours(
                                                         delta=settings.TIME_DELTA_FOR_STATUS_CHECK, 
                                                         with_jitter=True
-                                                                                    )      
+                                                                                    )
             # Update database with the actual scheduled time
             update_query = """
                 UPDATE portability_requests 
@@ -300,6 +350,7 @@ def check_status(self, mnp_request_id):
             """
             cursor.execute(update_query, (response_code,scheduled_datetime, mnp_request_id))
             connection.commit()
+            return "Scheduled next check for id: %s at %s", mnp_request_id, scheduled_datetime
 
             # update_query = "UPDATE portability_requests SET status = %s, updated_at = NOW() WHERE id = %s"
             # cursor.execute(update_query, (response_code, mnp_request_id))
@@ -307,20 +358,29 @@ def check_status(self, mnp_request_id):
             # next_check_in = 60 * (self.request.retries + 1)  # 60s, 120s, 180s...
             # check_status.apply_async(args=[mnp_request_id], countdown=next_check_in)
 
-        # If it's a final status, callback the BSS
-        if response_code in ('ACON', 'APOR', 'RECHAZADO'):
-            status_nc = "REQUEST_RESPONDED" if response_code in ('ACON', 'APOR', 'RECHAZADO') else "REQUEST_CONFIRMED"
+        if response_code in ('ACON', 'APOR', 'AREC','ACAN'):
+            # If it's a final status, callback the BSS immediately and update status_nc
+            status_nc = "REQUEST_RESPONDED" if response_code in ('ACON', 'APOR', 'AREC','RECHAZADO') else "REQUEST_CONFIRMED"
+            print(f"Final status: response_code={response_code}, status_nc={status_nc}")
+            # update_query = """
+            #     UPDATE portability_requests 
+            #     SET status = %s,
+            #     SET status_nc = %s,
+            #     updated_at = NOW() 
+            #     WHERE id = %s
+            # """
             update_query = """
                 UPDATE portability_requests 
-                SET status = %s,
-                SET status_nc = %s,
+                SET response_status = %s,
+                status_nc = %s,
                 updated_at = NOW() 
                 WHERE id = %s
             """
             cursor.execute(update_query, (response_code,status_nc, mnp_request_id))
             connection.commit()
+            return "Final status received for id: %s, status: %s", mnp_request_id, response_code
 
-            callback_bss.delay(mnp_request_id)
+            # callback_bss.delay(mnp_request_id)
 
     except requests.exceptions.RequestException as exc:
         print(f"Status check failed, retrying: {exc}")
@@ -333,7 +393,7 @@ def check_status(self, mnp_request_id):
             cursor.close()
             connection.close()
 
-def create_soap_payload(mnp_request):
-    """Your function to create SOAP payload from request data"""
-    # Implement your SOAP envelope creation logic here
-    pass
+# def create_soap_payload(mnp_request):
+#     """Your function to create SOAP payload from request data"""
+#     # Implement your SOAP envelope creation logic here
+#     pass

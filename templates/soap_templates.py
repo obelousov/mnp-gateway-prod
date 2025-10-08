@@ -33,3 +33,16 @@ CHECK_PORT_IN_STATUS_TEMPLATE = """<soapenv:Envelope xmlns:soapenv="http://schem
    </soapenv:Body>
   </soapenv:Envelope>
     """
+
+GET_PORT_IN_REQUEST_TEMPLATE = """<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
+ObtenerSolicitudAltaPortabilidadMovil
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <por:peticionObtenerSolicitudAltaPortabilidadMovil>
+         <v1:codigoSesion>{session_code}</v1:codigoSesion>
+         <por:codigoReferencia>{reference_code}</por:codigoReferencia>
+      </por:peticionObtenerSolicitudAltaPortabilidadMovil>
+   </soapenv:Body>
+</soapenv:Envelope>
+"""
