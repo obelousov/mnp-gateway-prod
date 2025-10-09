@@ -50,6 +50,8 @@ from services.time_services import calculate_countdown_working_hours
 
 WSDL_SERVICE_SPAIN_MOCK = settings.WSDL_SERVICE_SPAIN_MOCK
 WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = settings.WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS
+BSS_WEBHOOK_URL = settings.BSS_WEBHOOK_URL
+
 PENDING_REQUESTS_TIMEOUT = settings.PENDING_REQUESTS_TIMEOUT  # seconds
 
 # Get timezone from environment or default to Europe/Madrid
@@ -289,10 +291,210 @@ def submit_to_central_node(self, mnp_request_id):
             cursor.close()
             connection.close()
 
-@app.task(bind=True, max_retries=10)
+@app.task(bind=True, max_retries=3)
 def check_status(self, mnp_request_id, session_code, msisdn):
     """
     Task to check the status of a single MSISDN at the Central Node.
+    """
+    connection = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        # Check if request exists and is not in final status - that we check in central schedule
+        # cursor.execute("SELECT status FROM portability_requests WHERE id = %s", (mnp_request_id,))
+        # result = cursor.fetchone()
+        
+        # if not result:
+        #     return
+        # if result['status'] in ('ACON', 'APOR', 'RECHAZADO'):  # Final statuses
+        #     return
+
+        # status_current = result['status']
+        # Prepare the SOAP 'Consultar' request for this ONE MSISDN
+        consultar_payload = create_status_check_soap(mnp_request_id, session_code, msisdn)  # Check status request SOAP
+
+        if not WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS:
+            raise ValueError("WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS environment variable is not set.")
+        response = requests.post(WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS, 
+                               data=consultar_payload, 
+                               headers={'Content-Type': 'text/xml'}, 
+                               timeout=30)
+        response.raise_for_status()
+
+        # new_status = parse_soap_response(response.text)  # Parse the response
+        response_code, description, _, session_code = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia","estado"])
+        print(f"Received check response: response_code={response_code}, description={description}, session_code={session_code}")
+
+
+        # Update the DB
+        # update_query = "UPDATE portability_requests SET status = %s, updated_at = NOW() WHERE id = %s"
+        # cursor.execute(update_query, (response_code, mnp_request_id))
+        # connection.commit()
+
+        # If it's still pending, queue the next check with exponential backoff
+        if response_code == 'ASOL':
+            # Still same status, updated scheduled_at for next check - within same timenad
+            # countdown_seconds=calculate_countdown()
+            # Convert countdown to actual datetime
+            # scheduled_datetime = datetime.now() + timedelta(seconds=countdown_seconds)
+            _, _, scheduled_datetime = calculate_countdown_working_hours(
+                                                        delta=settings.TIME_DELTA_FOR_STATUS_CHECK, 
+                                                        with_jitter=True
+                                                                                    )
+            # Update database with the actual scheduled time
+            update_query = """
+                UPDATE portability_requests 
+                SET status = %s,
+                SET scheduled_at = %s,
+                updated_at = NOW() 
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (response_code,scheduled_datetime, mnp_request_id))
+            connection.commit()
+            return "Scheduled next check for id: %s at %s", mnp_request_id, scheduled_datetime
+
+            # update_query = "UPDATE portability_requests SET status = %s, updated_at = NOW() WHERE id = %s"
+            # cursor.execute(update_query, (response_code, mnp_request_id))
+            # connection.commit()
+            # next_check_in = 60 * (self.request.retries + 1)  # 60s, 120s, 180s...
+            # check_status.apply_async(args=[mnp_request_id], countdown=next_check_in)
+
+        if response_code in ('ACON', 'APOR', 'AREC','ACAN'):
+            # If it's a final status, callback the BSS immediately and update status_nc
+            status_nc = "REQUEST_RESPONDED" if response_code in ('ACON', 'APOR', 'AREC','RECHAZADO') else "REQUEST_CONFIRMED"
+            print(f"Final status: response_code={response_code}, status_nc={status_nc}")
+            # update_query = """
+            #     UPDATE portability_requests 
+            #     SET status = %s,
+            #     SET status_nc = %s,
+            #     updated_at = NOW() 
+            #     WHERE id = %s
+            # """
+            update_query = """
+                UPDATE portability_requests 
+                SET response_status = %s,
+                status_nc = %s,
+                updated_at = NOW() 
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (response_code,status_nc, mnp_request_id))
+            connection.commit()
+            callback_bss.delay(mnp_request_id, session_code, msisdn, response_code)
+            # callback_bss.apply_async(args=[mnp_request_id, session_code, msisdn, response_code], countdown=0)
+            return "Final status received for id: %s, status: %s", mnp_request_id, response_code
+            
+            # callback_bss.delay(mnp_request_id)
+
+    except requests.exceptions.RequestException as exc:
+        print(f"Status check failed, retrying: {exc}")
+        self.retry(exc=exc, countdown=120)
+    except Error as e:
+        print(f"Database error during status check: {e}")
+        self.retry(exc=e, countdown=30)
+    finally:
+        if connection and connection.is_connected():
+            cursor.close()
+            connection.close()
+
+@app.task(bind=True, max_retries=3)
+def callback_bss(self, mnp_request_id, session_code, msisdn, response_status):
+    """
+    REST JSON POST to BSS Webhook
+    
+    Args:
+        mnp_request_id: Unique identifier for the MNP request
+        session_code: Session code for the transaction
+        msisdn: Mobile number
+        response_status: Status to send to webhook
+    """
+    
+    # Prepare JSON payload
+    payload = {
+        "mnpRequestId": mnp_request_id,
+        "sessionCode": session_code,
+        "msisdn": msisdn,
+        "responseStatus": response_status
+        # "timestamp": self._get_current_timestamp()  # Optional: add timestamp
+    }
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'MNP-GW/1.0'
+    }
+    
+    try:
+        # Send POST request
+        response = requests.post(
+            BSS_WEBHOOK_URL,
+            json=payload,
+            headers=headers,
+            timeout=10  # 10 seconds timeout
+        )
+        
+        # Check if request was successful
+        if response.status_code == 200:
+            logger.info("Webhook sent successfully for request_id %s session %s, status: %s", mnp_request_id,session_code, response_status)
+
+            # Update database with the actual scheduled time
+            try: 
+                update_query = """
+                    UPDATE portability_requests 
+                    SET status_bss = %s,
+                    updated_at = NOW() 
+                    WHERE id = %s
+                """
+                connection = get_db_connection()
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(update_query, ("PORT_IN_COMPLETED", mnp_request_id))
+                connection.commit()
+                return True
+            except Exception as db_error:
+                logger.error("Database update failed for request %s: %s", mnp_request_id, str(db_error))
+        else:
+            logging.error("Webhook failed for session %s request_id: %s Status: %s, Response: %s", session_code, mnp_request_id,response.status_code, response.text)
+            return False
+            
+    except requests.exceptions.Timeout as exc:
+        logger.error("Webhook timeout for session %s request_is %s ",session_code, mnp_request_id)
+        self.retry(exc=exc, countdown=120)
+        return False
+    except requests.exceptions.ConnectionError as exc:
+        logger.error("Webhook connection error for session %s request_id %s",session_code, mnp_request_id)
+        self.retry(exc=exc, countdown=120)
+        return False
+    except requests.exceptions.RequestException as exc:
+        logger.error("Webhook error for session %s request_id %s: %s", session_code, mnp_request_id, str(exc))
+        self.retry(exc=exc, countdown=120)
+        return False
+    finally:
+        if connection and connection.is_connected():
+            cursor.close()
+            connection.close()
+
+
+    # except requests.exceptions.RequestException as exc:
+    #     print(f"Status check failed, retrying: {exc}")
+    #     self.retry(exc=exc, countdown=120)
+    # except Error as e:
+    #     print(f"Database error during status check: {e}")
+    #     self.retry(exc=e, countdown=30)
+    # finally:
+    #     if connection and connection.is_connected():
+    #         cursor.close()
+    #         connection.close()
+
+
+# def _get_current_timestamp(self):
+#     """Helper method to get current timestamp in ISO format"""
+#     from datetime import datetime
+#     return datetime.utcnow().isoformat() + 'Z'
+
+
+@app.task(bind=True, max_retries=3)
+def bss_status_webhook_1(self, mnp_request_id, session_code, msisdn, response_status):
+    """
+    REST JSON POST to BSS Webhook
     """
     connection = None
     try:

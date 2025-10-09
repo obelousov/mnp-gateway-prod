@@ -13,7 +13,7 @@ import pytz
 # from db_utils import get_db_connection
 from services.database_service import get_db_connection
 from config import logger
-from tasks.tasks import submit_to_central_node, check_status
+from tasks.tasks import submit_to_central_node, check_status, callback_bss
 
 # Load environment variables from .env file
 load_dotenv()
@@ -72,7 +72,7 @@ def process_pending_requests():
                 # logging.info("Processing Request ID %s", request['id'])
                 logger.info("Processing Request ID %s", request['id'])
                 # Process the request asynchronously
-                check_single_request.delay(request['id'], request['status_nc'], request['session_code'], request['msisdn'])
+                check_single_request.delay(request['id'], request['status_nc'], request['session_code'], request['msisdn'], request['response_status'], request.get('status_bss'))
                 processed_count += 1
                 
             except (mysql.connector.Error, requests.exceptions.RequestException) as e:
@@ -90,7 +90,7 @@ def process_pending_requests():
         logger.error("Database or request error in process_pending_requests: %s", e)
 
 @app.task
-def check_single_request(request_id, status_nc, session_code, msisdn):
+def check_single_request(request_id, status_nc, session_code, msisdn, response_status, status_bss):
     """Check a single MNP request and schedule next check if needed"""
     try:
         a, _, _ = calculate_countdown_working_hours(
@@ -98,7 +98,7 @@ def check_single_request(request_id, status_nc, session_code, msisdn):
             with_jitter=True)
         a_seconds = int(a.total_seconds())
 
-        if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION"]:
+        if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION","REQUEST_FAILED"]:
             submit_to_central_node.apply_async(
                 args=[request_id], 
                 countdown=a_seconds
@@ -107,6 +107,12 @@ def check_single_request(request_id, status_nc, session_code, msisdn):
         if status_nc in ["PENDING_RESPONSE"]:
             check_status.apply_async(
                 args=[request_id,session_code,msisdn], 
+                countdown=a_seconds
+            )
+
+        if status_nc in ["REQUEST_RESPONDED"] and status_bss in ["PROCESSING"]:
+            callback_bss.apply_async(
+                args=[request_id, session_code, msisdn, response_status], 
                 countdown=a_seconds
             )
 
@@ -153,20 +159,25 @@ def get_due_requests():
         logger.info("Outside working hours, no requests will be processed now.")
         return []
     # query = """
-    # SELECT id 
+    # SELECT id, status_nc, session_code, msisdn, response_status
     # FROM portability_requests 
-    # WHERE check_status = 'PENDING' 
-    # AND retry_count < 5
-    # AND (scheduled_at IS NULL OR scheduled_at <= NOW());
+    # WHERE (status_nc LIKE '%PENDING%' OR status_nc LIKE '%REQUEST_FAILED%')
+    # AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+    # AND request_type = 'port-in'
+    # AND country_code = 'ESP'
     # """
     query = """
-    SELECT id, status_nc, session_code, msisdn
+    SELECT id, status_nc, session_code, msisdn, response_status, status_bss
     FROM portability_requests 
-    WHERE (status_nc LIKE '%PENDING%' OR status_nc LIKE '%REQUEST_FAILED%')
+    WHERE (
+        (status_nc LIKE '%PENDING%' OR status_nc LIKE '%REQUEST_FAILED%')
+        OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%REQUEST_RESPONDED%')
+    )
     AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+    AND request_type = 'port-in'
+    AND country_code = 'ESP'
     """
 
-    # AND (next_check_at IS NULL OR next_check_at <= NOW());
     connection = None
     try:
         connection = get_db_connection()
