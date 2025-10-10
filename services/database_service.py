@@ -1,9 +1,11 @@
 from fastapi import HTTPException
 import mysql.connector
 from mysql.connector import Error
-from config import settings, logger
+from config import settings
 from services.time_services import calculate_countdown_working_hours
 from datetime import timedelta
+from services.logger import logger, payload_logger, log_payload
+
 
 def get_db_connection():
     """Create and return MySQL database connection"""
@@ -96,4 +98,68 @@ def save_portin_request_db(alta_data: dict):
         if cursor:
             cursor.close()
         if connection and connection.is_connected():
+            connection.close()
+
+
+def save_cancel_request_db(request_data: dict):
+    """
+    Save cancellation request to database (synchronous)
+    """
+    required_fields = ["reference_code", "cancellation_reason", "cancellation_initiated_by_donor"]
+    for field in required_fields:
+        if field not in request_data:
+            raise ValueError(f"Missing required field: {field}")
+    
+    connection = None
+    cursor = None
+    try:
+        # Calculate scheduled_at time
+        initial_delta = timedelta(seconds=-5)
+        _, _, scheduled_at = calculate_countdown_working_hours(
+            delta=initial_delta, 
+            with_jitter=False
+        )
+
+        # Get database connection
+        connection = get_db_connection()  # Your sync connection function
+        cursor = connection.cursor()
+
+        insert_query = """
+        INSERT INTO cancellation_requests 
+        (reference_code, cancellation_reason, cancellation_initiated_by_donor, 
+        session_code, scheduled_at, status_nc, status_bss, country_code, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+        RETURNING id
+        """
+
+        values = (
+            request_data["reference_code"],
+            request_data["cancellation_reason"],
+            request_data["cancellation_initiated_by_donor"],
+            request_data.get("session_code"),
+            scheduled_at,
+            "PENDING",
+            "PROCESSING",
+            "ESP"
+            # created_at and updated_at handled by NOW() in SQL
+            )
+                  
+        # Execute and commit
+        cursor.execute(insert_query, values)
+        request_id = cursor.fetchone()[0]  # Get the returned ID
+        connection.commit()
+        
+        logger.info("Saved cancellation request with ID: %s, scheduled at: %s", request_id, scheduled_at)
+        return request_id
+        
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        logger.error("Failed to save cancellation request: %s", e)
+        raise
+    finally:
+        # Always close cursor and connection
+        if cursor:
+            cursor.close()
+        if connection:
             connection.close()

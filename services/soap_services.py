@@ -8,7 +8,8 @@ from typing import Dict, List, Optional, Tuple
 # from db_utils import get_db_connection
 from services.database_service import get_db_connection
 from templates.soap_templates import PORTABILITY_REQUEST_TEMPLATE, CHECK_PORT_IN_STATUS_TEMPLATE
-from config import logger
+# from config import logger
+from services.logger import logger, payload_logger, log_payload
 
 
 # Namespace definitions

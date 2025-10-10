@@ -1,8 +1,9 @@
 from fastapi import FastAPI
 from api.endpoints import bss_requests, health
-from config import settings, logger  # Import the single settings object
+from config import settings
+from services.logger import logger, payload_logger, log_payload
 
-logger.info("Starting MNP Gateway API")
+logger.debug("Starting MNP Gateway API")
 
 app = FastAPI(
     title=settings.API_TITLE,           # Refer as settings.API_TITLE

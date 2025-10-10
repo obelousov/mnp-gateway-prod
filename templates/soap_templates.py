@@ -46,3 +46,16 @@ ObtenerSolicitudAltaPortabilidadMovil
    </soapenv:Body>
 </soapenv:Envelope>
 """
+
+CANCEL_PORT_IN_REQUEST_TEMPLATE = """<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <por:peticionCancelarSolicitudAltaPortabilidadMovil>
+         <v1:codigoSesion>?</v1:codigoSesion>
+         <por:codigoReferencia>?</por:codigoReferencia>
+         <por:causaEstado>?</por:causaEstado>
+         <por:cancelacionIniciadaPorDonante>?</por:cancelacionIniciadaPorDonante>
+      </por:peticionCancelarSolicitudAltaPortabilidadMovil>
+   </soapenv:Body>
+</soapenv:Envelope>
+"""

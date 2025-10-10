@@ -2,9 +2,10 @@
 Health check endpoints for MNP Gateway API
 """
 from fastapi import APIRouter
-from config import settings, logger, get_madrid_time_iso, get_madrid_time_readable
+from config import settings, get_madrid_time_iso, get_madrid_time_readable
 import time
 from datetime import datetime
+from services.logger import logger, payload_logger # Use the centralized logger
 
 router = APIRouter()
 

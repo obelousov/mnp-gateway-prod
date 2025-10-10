@@ -2,7 +2,8 @@ from datetime import datetime, timedelta
 import logging, os
 from dotenv import load_dotenv
 import random
-from config import logger, settings
+from config import settings
+from services.logger import logger, payload_logger # Use the centralized logger
 
 # Load environment variables from .env file
 # load_dotenv()

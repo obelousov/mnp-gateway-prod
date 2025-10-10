@@ -15,3 +15,4 @@ asyncio
 celery
 redis
 flower
+pydantic

@@ -12,8 +12,9 @@ import logging
 import pytz
 # from db_utils import get_db_connection
 from services.database_service import get_db_connection
-from config import logger
+# from config import logger
 from tasks.tasks import submit_to_central_node, check_status, callback_bss
+from services.logger import logger, payload_logger, log_payload
 
 # Load environment variables from .env file
 load_dotenv()
@@ -104,13 +105,13 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
                 countdown=a_seconds
             )
 
-        if status_nc in ["PENDING_RESPONSE"]:
+        if status_nc in ["PENDING_RESPONSE","PORT_IN_CONFIRMED"]:
             check_status.apply_async(
                 args=[request_id,session_code,msisdn], 
                 countdown=a_seconds
             )
 
-        if status_nc in ["REQUEST_RESPONDED"] and status_bss in ["PROCESSING"]:
+        if status_nc in ["REQUEST_RESPONDED","PORT_IN_COMPLETED","PORT_IN_REJECTED","PORT_IN_CANCELLED"] and status_bss in ["PROCESSING"]:
             callback_bss.apply_async(
                 args=[request_id, session_code, msisdn, response_status], 
                 countdown=a_seconds
@@ -172,6 +173,7 @@ def get_due_requests():
     WHERE (
         (status_nc LIKE '%PENDING%' OR status_nc LIKE '%REQUEST_FAILED%')
         OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%REQUEST_RESPONDED%')
+        OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_IN%')
     )
     AND (scheduled_at IS NULL OR scheduled_at <= NOW())
     AND request_type = 'port-in'

@@ -24,22 +24,37 @@ def get_madrid_time_readable():
 
 # Load environment variables
 load_dotenv()
-# Logging Configuration
-LOG_FILE = os.getenv('LOG_FILE', 'mnp.log')
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
-# Configure logging
-logging.basicConfig(
-    level=LOG_LEVEL,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILE),
-        logging.StreamHandler()
-    ]
-)
+# # Configure logging
+# logging.basicConfig(
+#     level=LOG_LEVEL,
+#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+#     handlers=[
+#         logging.FileHandler(LOG_FILE),
+#         logging.StreamHandler()
+#     ]
+# )
 
-# Create a logger for this module
-logger = logging.getLogger(__name__)
+# # Create a logger for this module
+# logger = logging.getLogger(__name__)
+
+SAVE_PAYLOAD_TO_LOG = int(os.getenv('SAVE_PAYLOAD_TO_LOG', '0'))
+PAYLOAD_LOG_FILE = os.getenv('PAYLOAD_LOG_FILE', 'payload.log')
+
+# # Configure PAYLOAD logger separately
+# payload_logger = logging.getLogger('payload_logger')
+# payload_logger.setLevel(logging.INFO)  # Payload logs are typically INFO level
+
+# # Prevent payload logs from propagating to root logger
+# payload_logger.propagate = False
+
+# # Create formatter for payload logs
+# payload_formatter = logging.Formatter('%(asctime)s - PAYLOAD - %(message)s')
+
+# # Create file handler for payload logs
+# payload_file_handler = logging.FileHandler(PAYLOAD_LOG_FILE)
+# payload_file_handler.setFormatter(payload_formatter)
+# payload_logger.addHandler(payload_file_handler)
 
 # Create a settings class or object to hold all configuration
 class Settings:
@@ -91,6 +106,14 @@ class Settings:
     BSS_WEBHOOK_URL = os.getenv('BSS_WEBHOOK_URL', '')
 
     PENDING_REQUESTS_TIMEOUT = float(os.getenv('PENDING_REQUESTS_TIMEOUT', '60.0'))  # seconds
+   
+   # Logging Configuration
+    LOG_FILE = os.getenv('LOG_FILE', 'mnp.log')
+    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+
+    SAVE_PAYLOAD_TO_LOG = int(os.getenv('SAVE_PAYLOAD_TO_LOG', '0'))
+    PAYLOAD_LOG_FILE = os.getenv('PAYLOAD_LOG_FILE', 'payload.log')
+
 
 
     # Database configuration as dict (for existing db_utils compatibility)
