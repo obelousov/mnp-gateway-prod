@@ -6,6 +6,7 @@ from dotenv import load_dotenv # type: ignore
 import logging
 import pytz
 from datetime import datetime
+from distutils.util import strtobool
 
 # Timezone configuration
 MADRID_TZ = pytz.timezone('Europe/Madrid')
@@ -114,6 +115,7 @@ class Settings:
     SAVE_PAYLOAD_TO_LOG = int(os.getenv('SAVE_PAYLOAD_TO_LOG', '0'))
     PAYLOAD_LOG_FILE = os.getenv('PAYLOAD_LOG_FILE', 'payload.log')
 
+    IGNORE_WORKING_HOURS: bool = bool(strtobool(os.getenv('IGNORE_WORKING_HOURS', 'false')))
 
 
     # Database configuration as dict (for existing db_utils compatibility)

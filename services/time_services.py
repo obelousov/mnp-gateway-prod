@@ -63,7 +63,101 @@ def get_next_working_day(date):
         next_day += timedelta(days=1)
     return next_day
 
+
 def calculate_countdown(with_jitter=True):
+    """
+    Calculate countdown seconds with holiday awareness.
+    Returns: (countdown_seconds, scheduled_at_datetime)
+    """
+    now = datetime.now()
+    
+    # If ignoring working hours, return immediate execution
+    if settings.IGNORE_WORKING_HOURS:
+        base_countdown = 60  # 1 minute minimum
+        with_jitter = False  # No jitter needed for immediate execution
+        if with_jitter:
+            jitter_seconds = random.randint(0, JITTER_WINDOW_MINUTES * 60)
+            final_countdown = base_countdown + jitter_seconds
+            actual_execution_time = now + timedelta(seconds=final_countdown)
+            
+            logging.info("Calc Countdown: IGNORE_WORKING_HOURS | base=%ss, jitter=+%ss, total=%ss, execution=%s", 
+                        base_countdown, jitter_seconds, final_countdown, actual_execution_time)
+            return final_countdown, actual_execution_time
+        else:
+            actual_execution_time = now + timedelta(seconds=base_countdown)
+            logging.info("Calc Countdown: IGNORE_WORKING_HOURS | base=%ss (no jitter), execution=%s", 
+                        base_countdown, actual_execution_time)
+            return base_countdown, actual_execution_time
+    
+    # Original business hour logic (only executed when IGNORE_WORKING_HOURS is False)
+    current_hour = now.hour
+    
+    # Check if today is a holiday/weekend
+    if is_holiday(now):
+        logging.info("Current day is holiday/weekend, targeting next working day")
+        next_working_day = get_next_working_day(now)
+        target_time = datetime.combine(next_working_day.date(), datetime.min.time()).replace(
+            hour=MORNING_WINDOW_START, minute=0, second=0
+        )
+        time_window = "next working day"
+    
+    # Normal business day logic
+    elif MORNING_WINDOW_START <= current_hour < MORNING_WINDOW_END:
+        # Morning → Check afternoon same day (if still business hours)
+        target_afternoon = datetime.combine(now.date(), datetime.min.time()).replace(
+            hour=AFTERNOON_WINDOW_START, minute=0, second=0
+        )
+        
+        # If afternoon target is still today and not a holiday, use it
+        if target_afternoon > now and not is_holiday(target_afternoon):
+            target_time = target_afternoon
+            time_window = "afternoon"
+        else:
+            # Otherwise target next working morning
+            next_working_day = get_next_working_day(now)
+            target_time = datetime.combine(next_working_day.date(), datetime.min.time()).replace(
+                hour=MORNING_WINDOW_START, minute=0, second=0
+            )
+            time_window = "next working morning"
+    
+    elif AFTERNOON_WINDOW_START <= current_hour < AFTERNOON_WINDOW_END:
+        # Afternoon → Check next working morning
+        next_working_day = get_next_working_day(now)
+        target_time = datetime.combine(next_working_day.date(), datetime.min.time()).replace(
+            hour=MORNING_WINDOW_START, minute=0, second=0
+        )
+        time_window = "next working morning"
+    
+    else:
+        # Outside hours → Check next working morning
+        next_working_day = get_next_working_day(now)
+        target_time = datetime.combine(next_working_day.date(), datetime.min.time()).replace(
+            hour=MORNING_WINDOW_START, minute=0, second=0
+        )
+        time_window = "next working morning"
+    
+    logging.info("Targeting %s check at %s", time_window, target_time)
+    
+    # Calculate base countdown
+    time_difference = target_time - now
+    base_countdown = max(60, int(time_difference.total_seconds()))
+    
+    # Add jitter to spread the load
+    if with_jitter:
+        jitter_seconds = random.randint(0, JITTER_WINDOW_MINUTES * 60)
+        final_countdown = base_countdown + jitter_seconds
+        actual_execution_time = now + timedelta(seconds=final_countdown)
+        
+        logging.info("Calc Countdown: target_time=%s, base=%ss, jitter=+%ss, total=%ss, actual_execution=%s", 
+                    target_time, base_countdown, jitter_seconds, final_countdown, actual_execution_time)
+        return final_countdown, actual_execution_time
+    else:
+        logging.info("Calc Countdown: target_time=%s, base=%ss (no jitter)", 
+                    target_time, base_countdown)
+        actual_execution_time = now + timedelta(seconds=base_countdown)
+        return base_countdown, actual_execution_time
+    
+def calculate_countdown_working(with_jitter=True):
     """
     Calculate countdown seconds with holiday awareness.
     Returns: (countdown_seconds, scheduled_at_datetime)
@@ -221,6 +315,97 @@ def calculate_countdown_working_hours(delta, with_jitter=True):
     """
     now = datetime.now()
     scheduled_datetime = now + delta
+    print(settings.IGNORE_WORKING_HOURS)
+    
+    # Check if scheduled time falls within working hours and not on holiday
+    def is_valid_business_time(target_dt):
+        if is_holiday(target_dt):
+            return False
+        
+        target_hour = target_dt.hour
+        is_morning_window = MORNING_WINDOW_START <= target_hour < MORNING_WINDOW_END
+        is_afternoon_window = AFTERNOON_WINDOW_START <= target_hour < AFTERNOON_WINDOW_END
+        
+        return is_morning_window or is_afternoon_window
+    
+    # Use settings.IGNORE_WORKING_HOURS to bypass business hour validation
+    if settings.IGNORE_WORKING_HOURS:
+        status = "IGNORE_WORKING_HOURS"
+        target_time = scheduled_datetime
+        time_window = "ignore_working_hours"
+        with_jitter = False  # No jitter needed for immediate execution
+    else:
+        # Check if the originally scheduled datetime is valid
+        if is_valid_business_time(scheduled_datetime):
+            status = "WITHIN_WORKING_HOURS"
+            target_time = scheduled_datetime
+            time_window = "current_schedule"
+        else:
+            status = "NEXT_TIMEBAND"
+            with_jitter = True  # Force jitter for next timeband
+            
+            # Find the next valid business time
+            candidate_date = scheduled_datetime.date()
+            
+            # Keep looking until we find a valid business day
+            while True:
+                # Try morning window first
+                morning_time = datetime.combine(candidate_date, datetime.min.time()).replace(
+                    hour=MORNING_WINDOW_START, minute=0, second=0
+                )
+                
+                if morning_time > now and not is_holiday(morning_time):
+                    target_time = morning_time
+                    time_window = "next_morning_window"
+                    break
+                
+                # Try afternoon window if morning is not valid or already passed
+                afternoon_time = datetime.combine(candidate_date, datetime.min.time()).replace(
+                    hour=AFTERNOON_WINDOW_START, minute=0, second=0
+                )
+                
+                if afternoon_time > now and not is_holiday(afternoon_time):
+                    target_time = afternoon_time
+                    time_window = "next_afternoon_window"
+                    break
+                
+                # Move to next day
+                candidate_date = get_next_working_day(datetime.combine(candidate_date, datetime.min.time())).date()
+    
+    # Calculate base countdown
+    time_difference = target_time - now
+    base_countdown = max(60, int(time_difference.total_seconds()))
+    
+    # Add jitter if requested
+    if with_jitter:
+        jitter_seconds = random.randint(0, JITTER_WINDOW_SECONDS)
+        final_countdown = base_countdown + jitter_seconds
+        actual_execution_time = now + timedelta(seconds=final_countdown)
+        
+        logger.info("Working Hrs Countdown: %s | Window: %s | Execution: %s", 
+                    status, time_window, actual_execution_time)
+
+        return timedelta(seconds=final_countdown), status, actual_execution_time
+    else:
+        logger.info("Working Hrs Countdown: %s | Window: %s | Execution: %s", 
+                    status, time_window, target_time)
+        
+        return timedelta(seconds=base_countdown), status, target_time
+    
+def calculate_countdown_working_hours_old(delta, with_jitter=True):
+    """
+    Calculate countdown status and return appropriate delta (with jitter) if within working hours,
+    otherwise calculate for next timeband (next business date).
+    
+    Args:
+        delta: timedelta object representing the initial countdown
+        with_jitter: Whether to add random jitter
+    
+    Returns:
+        tuple: (adjusted_delta, status, scheduled_datetime)
+    """
+    now = datetime.now()
+    scheduled_datetime = now + delta
     # current_hour = now.hour
     
     # Check if scheduled time falls within working hours and not on holiday
@@ -338,21 +523,21 @@ def schedule_task_with_countdown(initial_countdown_seconds):
     return adjusted_delta, status, scheduled_time
 
 if __name__ == "__main__":
-    print (calculate_countdown())
-    print("end of time_services")
+    # print (calculate_countdown())
+    # print("end of time_services")
 
-    countdown_seconds, scheduled_at = calculate_countdown(with_jitter=True)
+    # countdown_seconds, scheduled_at = calculate_countdown(with_jitter=True)
 
-    print(f"Task will run in {countdown_seconds} seconds")
-    print(f"Scheduled execution time: {scheduled_at}")
+    # print(f"Task will run in {countdown_seconds} seconds")
+    # print(f"Scheduled execution time: {scheduled_at}")
 
     # calculate_countdown_working_hours(timedelta(minutes=1))
     # calculate_countdown_working_hours(timedelta(minutes=0),with_jitter=True)
     # print("Is working hours now?", is_working_hours_now())
 #     uvicorn.run(app, host="0.0.0.0", port=8000)
 
-    # a, b, scheduled_at = calculate_countdown_working_hours(
-    #         timedelta(minutes=0), 
-    #         with_jitter=True)
-    # a_seconds = int(a.total_seconds())
-    # print("Final scheduled at:a", a, "a_sec", a_seconds, " b: " , b, " c: ", scheduled_at)
+    a, b, scheduled_at = calculate_countdown_working_hours(
+            timedelta(minutes=0), 
+            with_jitter=True)
+    a_seconds = int(a.total_seconds())
+    print("Final scheduled at:a", a, "a_sec", a_seconds, " b: " , b, " c: ", scheduled_at)

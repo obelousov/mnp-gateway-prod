@@ -16,3 +16,4 @@ celery
 redis
 flower
 pydantic
+aiomysql

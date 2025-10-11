@@ -149,6 +149,46 @@ def json_to_soap_request(json_data: dict) -> str:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error converting JSON to SOAP: {str(e)}") from e
 
+def json_from_db_to_soap_new(json_data):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER json_from_db_to_soap_new() %s", json_data)
+    # print("Received JSON data:", json_data)
+    
+    # Format dates properly
+    def format_date(value):
+        if isinstance(value, (date, datetime)):
+            return value.strftime('%Y-%m-%d')
+        return str(value) if value is not None else ''
+      
+    # Handle optional fields
+    fecha_ventana_optional = ""
+    if json_data.get('desired_porting_date'):  # Changed from 'porting_window_date'
+        fecha_ventana_optional = f"<por:fechaVentanaCambio>{format_date(json_data['desired_porting_date'])}</por:fechaVentanaCambio>"
+    
+    iccid_optional = ""
+    if json_data.get('iccid'):
+        iccid_optional = f"<por:ICCID>{json_data['iccid']}</por:ICCID>"
+    
+    # Extract document data from nested structure
+    subscriber_data = json_data.get('subscriber', {})
+    doc_data = subscriber_data.get('identification_document', {})
+    
+    return PORTABILITY_REQUEST_TEMPLATE.format(
+        session_code=json_data.get('session_code', ''),
+        request_date=format_date(json_data.get('requested_at')),  # Changed from 'request_date'
+        donor_operator=json_data.get('donor_operator', ''),
+        recipient_operator=json_data.get('recipient_operator', ''),
+        id_type=doc_data.get('document_type', 'NIE'),  # Changed from 'id_type'
+        id_number=doc_data.get('document_number', ''),  # Changed from 'id_number'
+        contract_code=json_data.get('contract_number', ''),  # Changed from 'contract_code'
+        nrn_receptor=json_data.get('routing_number', ''),  # Changed from 'nrn_receptor'
+        fecha_ventana_optional=fecha_ventana_optional,
+        iccid_optional=iccid_optional,
+        msisdn=json_data.get('msisdn', '')  # Removed phone_number fallback
+    )
+
 def json_from_db_to_soap(json_data):
     """
     Version using string formatting for the SOAP request
@@ -201,12 +241,12 @@ FIELD_MAPPING = {
 }
 
 # def create_status_check_soap(mnp_request_id, session_code, msisdn):
-def create_status_check_soap(mnp_request_id: int, session_code: str, msisdn: str) -> str:
+def create_status_check_soap(mnp_request_id: int, reference_code: str, msisdn: str) -> str:
     """
     Get request data from DB based on mnp_request_idt
     """
     # print ("received mnp_id:", mnp_request_id, session_code, msisdn)
-    logger.info(f"received mnp_id: {mnp_request_id}, session_code: {session_code}, msisdn: {msisdn}")
+    logger.info("received mnp_id: %s, reference_code: %s, msisdn: %s", mnp_request_id, reference_code, msisdn)
 
     # 1. Get database connection
     # connection = get_db_connection()
@@ -248,7 +288,7 @@ def create_status_check_soap(mnp_request_id: int, session_code: str, msisdn: str
     #     session_code,msisdn
     # )
     return CHECK_PORT_IN_STATUS_TEMPLATE.format(
-        session_code=session_code,
+        reference_code=reference_code,
         msisdn=msisdn
     )
 

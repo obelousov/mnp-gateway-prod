@@ -27,7 +27,7 @@ CHECK_PORT_IN_STATUS_TEMPLATE = """<soapenv:Envelope xmlns:soapenv="http://schem
    <soapenv:Header/>
    <soapenv:Body>
       <por:peticionConsultarProcesosPortabilidadMovil>
-         <v1:codigoSesion>{session_code}</v1:codigoSesion>
+         <v1:codigoReferencia>{reference_code}</v1:codigoReferencia>
          <por:MSISDN>{msisdn}</por:MSISDN>
       </por:peticionConsultarProcesosPortabilidadMovil>
    </soapenv:Body>

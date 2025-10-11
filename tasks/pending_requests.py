@@ -15,24 +15,7 @@ from services.database_service import get_db_connection
 # from config import logger
 from tasks.tasks import submit_to_central_node, check_status, callback_bss
 from services.logger import logger, payload_logger, log_payload
-
-# Load environment variables from .env file
-load_dotenv()
-
-LOG_FILE = os.getenv('LOG_FILE', 'mnp.log')  # Default log file path
-LOG_INFO = os.getenv('LOG_INFO', 'INFO')
-
-# Configure logging to both file and console
-# logging.basicConfig(
-#     level=LOG_INFO,
-#     format='%(asctime)s - %(levelname)s - %(message)s',
-#     handlers=[
-#         logging.FileHandler(LOG_FILE),  # Container path
-#         logging.StreamHandler()  # Also show in docker logs
-#     ]
-# )
-
-WSDL_SERVICE_SPAIN_MOCK = os.getenv('WSDL_SERVICE_SPAIN_MOCK')
+from config import settings
 
 @app.task
 def print_periodic_message():
@@ -50,6 +33,7 @@ def print_periodic_message():
 @app.task
 def process_pending_requests():
     """Celery Beat task: Check for pending requests that need processing"""
+    logger.info("ENTER process_pending_requests()")
     try:
         # Get requests that are due for checking
         due_requests = get_due_requests()
@@ -68,12 +52,9 @@ def process_pending_requests():
         
         for request in due_requests:
             try:
-                # Mark as in progress
-                # mark_request_in_progress(request['id'])
-                # logging.info("Processing Request ID %s", request['id'])
                 logger.info("Processing Request ID %s", request['id'])
                 # Process the request asynchronously
-                check_single_request.delay(request['id'], request['status_nc'], request['session_code'], request['msisdn'], request['response_status'], request.get('status_bss'))
+                check_single_request.delay(request['id'], request['status_nc'], request['session_code'], request['msisdn'], request['response_status'], request.get('status_bss'), request.get('reference_code'))
                 processed_count += 1
                 
             except (mysql.connector.Error, requests.exceptions.RequestException) as e:
@@ -91,8 +72,10 @@ def process_pending_requests():
         logger.error("Database or request error in process_pending_requests: %s", e)
 
 @app.task
-def check_single_request(request_id, status_nc, session_code, msisdn, response_status, status_bss):
+def check_single_request(request_id, status_nc, session_code, msisdn, response_status, status_bss,reference_code):
     """Check a single MNP request and schedule next check if needed"""
+    logger.debug("ENTER check_single_request() with req_id: %s, status_nc %s, status_bss %s, msisdn %s, reference_code %s", request_id, status_nc, status_bss, msisdn, reference_code)
+    # logger.debug("Func: check single request -- %s reference_code %s", request_id, reference_code)
     try:
         a, _, _ = calculate_countdown_working_hours(
             timedelta(minutes=0), 
@@ -100,14 +83,15 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
         a_seconds = int(a.total_seconds())
 
         if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION","REQUEST_FAILED"]:
-            submit_to_central_node.apply_async(
-                args=[request_id], 
-                countdown=a_seconds
+            if response_status not in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN']:
+                submit_to_central_node.apply_async(
+                    args=[request_id],
+                    countdown=a_seconds
             )
 
         if status_nc in ["PENDING_RESPONSE","PORT_IN_CONFIRMED"]:
             check_status.apply_async(
-                args=[request_id,session_code,msisdn], 
+                args=[request_id,session_code,msisdn, reference_code], 
                 countdown=a_seconds
             )
 
@@ -125,50 +109,21 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
         logger.error("Database error in check_single_request for request %s: %s", request_id, {str(e)})
     except requests.exceptions.RequestException as e:
         logger.error("Request error in check_single_request for request %s: %s", request_id, {str(e)})
-    # except Exception as e:
-    #     logger.error("Error in check_single_request for request %s: %s", request_id, str(e))
-    #     print(f"Error in check_single_request for request {request_id}: {str(e)}")
-    #     # Optionally re-raise if you want the task to fail
-        # raise
-    #     if status_nc == 'ASOL':
-    #         # Calculate next check time
-    #         countdown_seconds = calculate_countdown()
-    #         next_check_time = datetime.now() + timedelta(seconds=countdown_seconds)
-            
-    #         # Update database with next check time
-    #         update_next_check_time(request_id, next_check_time)
-            
-    #         logging.info("Request %s next check at %s", request_id, next_check_time)
-    #     else:
-    #         # Request completed, clear next check
-    #         update_next_check_time(request_id, None)
-    #         logging.info("Request %s completed", request_id)
-            
-    # except mysql.connector.Error as e:
-    #     # logging.error("Database error checking request %s: %s", request_id, e)
-    #     logger.error("Database error checking request %s: %s", request_id, e)
-    #     # Implement retry logic here
-    # except requests.exceptions.RequestException as e:
-    #     # logging.error("Request error checking request %s: %s", request_id, e)
-    #     logger.error("Request error checking request %s: %s", request_id, e)
-    #     # Implement retry logic here
 
 def get_due_requests():
     """Get requests that are due for checking"""
-    if not is_working_hours_now():
-        print("Outside working hours, no requests will be processed now.")
-        logger.info("Outside working hours, no requests will be processed now.")
-        return []
-    # query = """
-    # SELECT id, status_nc, session_code, msisdn, response_status
-    # FROM portability_requests 
-    # WHERE (status_nc LIKE '%PENDING%' OR status_nc LIKE '%REQUEST_FAILED%')
-    # AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-    # AND request_type = 'port-in'
-    # AND country_code = 'ESP'
-    # """
+
+    if settings.IGNORE_WORKING_HOURS:
+        # Process regardless of working hours
+        pass
+    else:
+        if not is_working_hours_now():
+            logger.info("Outside working hours, no requests will be processed now.")
+            return []
+        
+    logger.debug("ENTER get_due_requests()")
     query = """
-    SELECT id, status_nc, session_code, msisdn, response_status, status_bss
+    SELECT id, status_nc, session_code, msisdn, response_status, status_bss, reference_code
     FROM portability_requests 
     WHERE (
         (status_nc LIKE '%PENDING%' OR status_nc LIKE '%REQUEST_FAILED%')
@@ -176,7 +131,7 @@ def get_due_requests():
         OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_IN%')
     )
     AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-    AND request_type = 'port-in'
+    AND request_type IN ('port-in', 'PORT-IN', 'Port-In', 'PORT_IN')
     AND country_code = 'ESP'
     """
 

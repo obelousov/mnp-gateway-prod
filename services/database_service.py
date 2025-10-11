@@ -5,7 +5,22 @@ from config import settings
 from services.time_services import calculate_countdown_working_hours
 from datetime import timedelta
 from services.logger import logger, payload_logger, log_payload
+import aiomysql
 
+async def async_get_db_connection():
+    """Create and return async MySQL database connection"""
+    try:
+        connection = await aiomysql.connect(
+            host=settings.DB_HOST,
+            port=settings.DB_PORT,
+            user=settings.DB_USER,
+            password=settings.DB_PASSWORD,
+            db=settings.DB_NAME,
+            autocommit=False
+        )
+        return connection
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}") from e
 
 def get_db_connection():
     """Create and return MySQL database connection"""
@@ -100,12 +115,14 @@ def save_portin_request_db(alta_data: dict):
         if connection and connection.is_connected():
             connection.close()
 
-
-def save_cancel_request_db(request_data: dict):
+    
+# def save_cancel_request_db(request_data: dict):
+def save_cancel_request_db(request_data: dict, request_type: str = 'CANCEL', country_code: str = "ESP") -> int:
     """
     Save cancellation request to database (synchronous)
     """
-    required_fields = ["reference_code", "cancellation_reason", "cancellation_initiated_by_donor"]
+    logger.debug("ENTER save_cancel_request_db() %s", request_data)
+    required_fields = ["reference_code", "cancellation_reason", "cancellation_initiated_by_donor", "msisdn"]
     for field in required_fields:
         if field not in request_data:
             raise ValueError(f"Missing required field: {field}")
@@ -119,31 +136,35 @@ def save_cancel_request_db(request_data: dict):
             delta=initial_delta, 
             with_jitter=False
         )
+        # request_type="CANCEL"
+        # status_bss="bss_portin_received_by_mnp"
+        status_bss="PROCESSING"
+        status_nc="PENDING_SUBMIT"
 
         # Get database connection
         connection = get_db_connection()  # Your sync connection function
         cursor = connection.cursor()
 
         insert_query = """
-        INSERT INTO cancellation_requests 
-        (reference_code, cancellation_reason, cancellation_initiated_by_donor, 
+        INSERT INTO portability_requests 
+        (reference_code, msisdn, request_type, cancellation_reason, cancellation_initiated_by_donor, 
         session_code, scheduled_at, status_nc, status_bss, country_code, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
         RETURNING id
         """
 
         values = (
             request_data["reference_code"],
+            request_data["msisdn"],
+            request_type,
             request_data["cancellation_reason"],
             request_data["cancellation_initiated_by_donor"],
             request_data.get("session_code"),
             scheduled_at,
-            "PENDING",
-            "PROCESSING",
-            "ESP"
-            # created_at and updated_at handled by NOW() in SQL
+            status_nc,
+            status_bss,
+        country_code
             )
-                  
         # Execute and commit
         cursor.execute(insert_query, values)
         request_id = cursor.fetchone()[0]  # Get the returned ID
@@ -162,4 +183,109 @@ def save_cancel_request_db(request_data: dict):
         if cursor:
             cursor.close()
         if connection:
+            connection.close()
+
+                                
+
+def save_portability_request_new(alta_data: dict, request_type: str = 'PORT_IN', country_code: str = "ESP") -> int:
+    """
+    Save portability request to optimized table structure
+    """
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # Extract data from the request using NEW field names
+        subscriber_data = alta_data.get('subscriber', {})
+        doc_data = subscriber_data.get('identification_document', {})
+        personal_data = subscriber_data.get('personal_data', {})
+        name_surname = personal_data.get('name_surname', 'UNKNOWN_SUBSCRIBER')  # Fixed: get from personal_data       
+
+        status_bss="PROCESSING"
+        status_nc="PENDING_SUBMIT"
+
+        # Calculate scheduled_at
+        initial_delta = timedelta(seconds=-5)
+        _, _, scheduled_at = calculate_countdown_working_hours(
+            delta=initial_delta, 
+            with_jitter=False
+        )
+
+        print("Inserting new portability request into database with session_code:", alta_data.get('session_code'))
+        
+        # FIX: Remove RETURNING id and use lastrowid
+        insert_query = """
+        INSERT INTO portability_requests (
+            session_code, donor_operator, recipient_operator,
+            document_type, document_number, contract_number, routing_number,
+            desired_porting_date, iccid, msisdn,
+            request_type, status_bss, status_nc, scheduled_at, requested_at,
+            country_code, name_surname, nationality
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+
+        values = (
+            alta_data.get('session_code'),
+            alta_data.get('donor_operator'),
+            alta_data.get('recipient_operator'),
+            doc_data.get('document_type'),
+            doc_data.get('document_number'),
+            alta_data.get('contract_number'),
+            alta_data.get('routing_number'),
+            alta_data.get('desired_porting_date'),
+            alta_data.get('iccid'),
+            alta_data.get('msisdn'),
+            request_type,
+            status_bss,
+            status_nc,
+            scheduled_at,
+            alta_data.get('requested_at'),
+            country_code,
+            name_surname,
+            personal_data.get('nationality', 'ESP')
+        )
+
+        cursor.execute(insert_query, values)
+        connection.commit()
+        
+        # FIX: Use lastrowid (no RETURNING clause)
+        new_request_id = cursor.lastrowid
+        logger.info("Inserted new portability request with ID: %s", new_request_id)
+        return new_request_id
+        
+    # except Exception as e:
+    #     if connection:
+    #         connection.rollback()
+    #     logger.error("Database error creating port-in request: %s", str(e))
+    #     raise
+    # finally:
+    #     if cursor:
+    #         cursor.close()
+    #     if connection and connection.is_connected():
+    #         connection.close()
+
+    except Error as e:
+        if connection:
+            connection.rollback()
+    
+        error_msg =""
+        if e.errno == 1364:  # Field doesn't have a default value
+            # Extract the field name from the error message
+            error_msg = str(e)
+            if "Field '" in error_msg:
+                field_name = error_msg.split("Field '")[1].split("' doesn't")[0]
+                logger.error("Missing required field '%s' in database insert", field_name)
+                raise ValueError(f"Missing required field: {field_name}") from e
+            else:
+                logger.error("Missing required field: %s", error_msg)
+                raise ValueError("Missing required field in database insert") from e
+        else:
+            logger.error("MySQL error (errno: %s): %s", e.errno, str(e))
+            raise     
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
             connection.close()

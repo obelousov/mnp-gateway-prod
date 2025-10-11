@@ -7,7 +7,7 @@ import mysql.connector
 from mysql.connector import Error
 from dotenv import load_dotenv
 # from soap_utils import create_soap_payload, parse_soap_response, json_to_soap_request, json_from_db_to_soap, parse_soap_response_list, create_status_check_soap
-from services.soap_services import create_soap_payload, parse_soap_response, json_to_soap_request, json_from_db_to_soap, parse_soap_response_list, create_status_check_soap
+from services.soap_services import create_soap_payload, parse_soap_response, json_to_soap_request, json_from_db_to_soap, parse_soap_response_list, create_status_check_soap, json_from_db_to_soap_new
 # from time_utils import calculate_countdown
 from services.time_services import calculate_countdown
 from datetime import datetime, timedelta
@@ -19,35 +19,6 @@ from config import settings
 from services.time_services import calculate_countdown_working_hours
 from services.logger import logger, payload_logger, log_payload
 
-
-# Load environment variables from .env file
-# load_dotenv()
-
-# Your database configuration (should be in a config file)
-# MYSQL_CONFIG = {
-#     'host': os.getenv('DB_HOST', 'localhost'),
-#     'user': os.getenv('DB_USER', 'root'),
-#     'password': os.getenv('DB_PASSWORD', ''),
-#     'database': os.getenv('DB_NAME', 'mnp_database'),
-#     'port': os.getenv('DB_PORT', '3306')
-# }
-
-# LOG_FILE = os.getenv('LOG_FILE', 'mnp.log')  # Default log file path
-# LOG_INFO = os.getenv('LOG_INFO', 'INFO')
-
-# Configure logging to both file and console
-# logging.basicConfig(
-#     level=LOG_INFO,
-#     format='%(asctime)s - %(levelname)s - %(message)s',
-#     handlers=[
-#         logging.FileHandler(LOG_FILE),  # Container path
-#         logging.StreamHandler()  # Also show in docker logs
-#     ]
-# )
-
-# WSDL_SERVICE_SPAIN_MOCK = os.getenv('WSDL_SERVICE_SPAIN_MOCK')
-# WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = os.getenv('WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS')
-
 WSDL_SERVICE_SPAIN_MOCK = settings.WSDL_SERVICE_SPAIN_MOCK
 WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = settings.WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS
 BSS_WEBHOOK_URL = settings.BSS_WEBHOOK_URL
@@ -57,15 +28,6 @@ PENDING_REQUESTS_TIMEOUT = settings.PENDING_REQUESTS_TIMEOUT  # seconds
 # Get timezone from environment or default to Europe/Madrid
 timezone_str = settings.TIME_ZONE
 container_tz = pytz.timezone(timezone_str)
-
-# def get_db_connection_1():
-#     """Create and return MySQL database connection"""
-#     try:
-#         connection = mysql.connector.connect(**MYSQL_CONFIG)
-#         return connection
-#     except Error as e:
-#         print(f"Database connection error: {str(e)}")
-#         raise
 
 @app.task
 def print_periodic_message():
@@ -84,6 +46,7 @@ def submit_to_central_node(self, mnp_request_id):
     Task to submit a porting request to the Central Node.
     This runs in the background.
     """
+    logger.debug("ENTER submit_to_central_node with req_id %s", mnp_request_id)
     connection = None
     try:
         # 1. Get database connection
@@ -101,16 +64,22 @@ def submit_to_central_node(self, mnp_request_id):
         
         if not mnp_request:
             print(f"Submit to NC: request {mnp_request_id} not found or not yet scheduled")
-            return
+            return f"Submit to NC: request {mnp_request_id} not found or not yet scheduled"
+
+        response_status = mnp_request['response_status']
+
+        if response_status in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN']:
+            return f"Request {mnp_request_id} is in status {response_status}, no further submission needed"
 
         # 3. Prepare your SOAP envelope (use your existing logic)
-        print(f"Submit to NC: Request {mnp_request} found, preparing SOAP payload...")
+        # print(f"Submit to NC: Request {mnp_request} found, preparing SOAP payload...")
 
         # Convert JSON to SOAP request
         # soap_request = json_to_soap_request(mnp_request)
-        print("Submit to NC: Generated SOAP Request:")
-        soap_payload = json_from_db_to_soap(mnp_request)  # function to create SOAP
-        print(soap_payload)
+        logger.debug("Submit to NC: Generated SOAP Request:")
+        # soap_payload = json_from_db_to_soap(mnp_request)  # function to create SOAP
+        soap_payload = json_from_db_to_soap_new(mnp_request)  # function to create SOAP
+        # print(soap_payload)
         # Conditional payload logging
         log_payload('NC', 'PORT_IN', 'REQUEST', str(soap_payload))
 
@@ -128,8 +97,8 @@ def submit_to_central_node(self, mnp_request_id):
 
         # 5. Parse the SOAP response (use your existing logic)
         # session_code, status = parse_soap_response_list(response.text,)
-        response_code, description, session_code = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
-        print(f"Submit to NC: Received response: response_code={response_code}, description={description}, session_code={session_code}")
+        response_code, description, reference_code = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+        print(f"Submit to NC: Received response: response_code={response_code}, description={description}, reference_code={reference_code}")
 
         # Conditional payload logging
         log_payload('NC', 'PORT_IN', 'RESPONSE', str(response.text))
@@ -152,15 +121,14 @@ def submit_to_central_node(self, mnp_request_id):
         
                 update_query = """
                     UPDATE portability_requests 
-                    SET status_nc = %s, scheduled_at = %s, response_status = %s, updated_at = NOW() 
+                    SET status_nc = %s, scheduled_at = %s, response_status = %s, reference_code = %s, description = %s, updated_at = NOW() 
                     WHERE id = %s
                     """
-                cursor.execute(update_query, (status_nc, scheduled_at, response_code, mnp_request_id))
+                cursor.execute(update_query, (status_nc, scheduled_at, response_code, reference_code, description, mnp_request_id))
                 connection.commit()
         else:
-            # No status change,or other status change - need to reschdeul within same timeband
+            # Should not come here normally, but just in case 
             logger.info("No status change for request %s", mnp_request_id)
-            # Other status changes - just update status and reschedule withing working hours
             initial_delta = timedelta(seconds=PENDING_REQUESTS_TIMEOUT)  # try again in 60 seconds
             _, _, scheduled_at = calculate_countdown_working_hours(
                         delta=initial_delta, 
@@ -171,7 +139,7 @@ def submit_to_central_node(self, mnp_request_id):
                         SET response_status = %s, description = %s, status_nc = %s, scheduled_at = %s, updated_at = NOW() 
                         WHERE id = %s
                         """
-            cursor.execute(update_query, (status_nc, mnp_request_id))
+            cursor.execute(update_query, (response_code, description, status_nc, scheduled_at, mnp_request_id))
             connection.commit()
 
     except requests.exceptions.RequestException as exc:
@@ -213,37 +181,23 @@ def submit_to_central_node(self, mnp_request_id):
             """
             cursor.execute(update_query, (status_nc, current_retry + 1, error_description, mnp_request_id))
             connection.commit()
-        # Don't call self.retry() here - let the task fail permanently    except Error as e:
-        # print(f"Database error: {e}")
-        # You might want to retry on database errors too
-        # self.retry(exc=e, countdown=30)
     finally:
         if connection and connection.is_connected():
             cursor.close()
             connection.close()
 
 @app.task(bind=True, max_retries=3)
-def check_status(self, mnp_request_id, session_code, msisdn):
+def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
     """
     Task to check the status of a single MSISDN at the Central Node.
     """
     connection = None
+    logger.info("ENTER check status() with req_id %s ref_code %s msisdn %s", mnp_request_id, reference_code,msisdn)
     try:
         connection = get_db_connection()
         cursor = connection.cursor(dictionary=True)
         
-        # Check if request exists and is not in final status - that we check in central schedule
-        # cursor.execute("SELECT status FROM portability_requests WHERE id = %s", (mnp_request_id,))
-        # result = cursor.fetchone()
-        
-        # if not result:
-        #     return
-        # if result['status'] in ('ACON', 'APOR', 'RECHAZADO'):  # Final statuses
-        #     return
-
-        # status_current = result['status']
-        # Prepare the SOAP 'Consultar' request for this ONE MSISDN
-        consultar_payload = create_status_check_soap(mnp_request_id, session_code, msisdn)  # Check status request SOAP
+        consultar_payload = create_status_check_soap(mnp_request_id, reference_code, msisdn)  # Check status request SOAP
         # Conditional payload logging
         log_payload('NC', 'CHECK_STATUS', 'REQUEST', str(consultar_payload))
 
@@ -260,18 +214,9 @@ def check_status(self, mnp_request_id, session_code, msisdn):
         print(f"Received check response: response_code={response_code}, description={description}, session_code={session_code}")
         log_payload('NC', 'CHECK_STATUS', 'RESPONSE', str(response.text))
 
-
-        # Update the DB
-        # update_query = "UPDATE portability_requests SET status = %s, updated_at = NOW() WHERE id = %s"
-        # cursor.execute(update_query, (response_code, mnp_request_id))
-        # connection.commit()
-
-        # If it's still pending, queue the next check with exponential backoff
+        # If it's still pending, queue the next check during working hours
         if response_code == 'ASOL':
             # Still same status, updated scheduled_at for next check - within same timenad
-            # countdown_seconds=calculate_countdown()
-            # Convert countdown to actual datetime
-            # scheduled_datetime = datetime.now() + timedelta(seconds=countdown_seconds)
             _, _, scheduled_datetime = calculate_countdown_working_hours(
                                                         delta=settings.TIME_DELTA_FOR_STATUS_CHECK, 
                                                         with_jitter=True
@@ -288,17 +233,7 @@ def check_status(self, mnp_request_id, session_code, msisdn):
             connection.commit()
             return "Scheduled next check for id: %s at %s", mnp_request_id, scheduled_datetime
 
-            # update_query = "UPDATE portability_requests SET status = %s, updated_at = NOW() WHERE id = %s"
-            # cursor.execute(update_query, (response_code, mnp_request_id))
-            # connection.commit()
-            # next_check_in = 60 * (self.request.retries + 1)  # 60s, 120s, 180s...
-            # check_status.apply_async(args=[mnp_request_id], countdown=next_check_in)
-
         if response_code in ('ACON', 'APOR', 'AREC','ACAN'):
-            # If it's a final status, callback the BSS immediately and update status_nc
-            # status_nc = "REQUEST_RESPONDED" if response_code in ('ACON', 'APOR', 'AREC','RECHAZADO') else "REQUEST_CONFIRMED"
-            # if response_code == 'ASOL':
-            #     status_nc = 'PENDING_RESPONSE'
             if response_code == 'ACON':
                 status_nc = 'PORT_IN_CONFIRMED'
             elif response_code == 'APOR':
@@ -311,21 +246,15 @@ def check_status(self, mnp_request_id, session_code, msisdn):
                 status_nc = 'PENDING_RESPONSE'
 
             print(f"Final status: response_code={response_code}, status_nc={status_nc}")
-            # update_query = """
-            #     UPDATE portability_requests 
-            #     SET status = %s,
-            #     SET status_nc = %s,
-            #     updated_at = NOW() 
-            #     WHERE id = %s
-            # """
             update_query = """
                 UPDATE portability_requests 
                 SET response_status = %s,
                 status_nc = %s,
+                description = %s,
                 updated_at = NOW() 
                 WHERE id = %s
             """
-            cursor.execute(update_query, (response_code,status_nc, mnp_request_id))
+            cursor.execute(update_query, (response_code,status_nc, description,mnp_request_id))
             connection.commit()
             callback_bss.delay(mnp_request_id, session_code, msisdn, response_code)
             # callback_bss.apply_async(args=[mnp_request_id, session_code, msisdn, response_code], countdown=0)
@@ -355,7 +284,7 @@ def callback_bss(self, mnp_request_id, session_code, msisdn, response_status):
         msisdn: Mobile number
         response_status: Status to send to webhook
     """
-    
+    logger.debug("ENTER callback_bss() with req_id %s msisdn %s response_status %s", mnp_request_id, msisdn, response_status)
     # Prepare JSON payload
     payload = {
         "mnpRequestId": mnp_request_id,
@@ -418,8 +347,3 @@ def callback_bss(self, mnp_request_id, session_code, msisdn, response_status):
         if connection and connection.is_connected():
             cursor.close()
             connection.close()
-
-# def create_soap_payload(mnp_request):
-#     """Your function to create SOAP payload from request data"""
-#     # Implement your SOAP envelope creation logic here
-#     pass
