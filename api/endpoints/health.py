@@ -9,7 +9,10 @@ from services.logger import logger, payload_logger # Use the centralized logger
 
 router = APIRouter()
 
-@router.get("/health")
+@router.get(
+        "/health",
+        include_in_schema=False  # This hides the endpoint from Swagger)
+)
 async def health_check():
     """Basic health check endpoint"""
     logger.info("MNP healthcheck accessed")

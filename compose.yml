@@ -7,7 +7,8 @@ services:
     #
     # For development (override command):
     # command: uvicorn main1:app --host 0.0.0.0 --port 8090 --reload
-    command: uvicorn main:app --host 0.0.0.0 --port 8090 --reload
+    # command: uvicorn main:app --host 0.0.0.0 --port 8090 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port ${API_PORT} --reload
     volumes:
       - .:/app  # Mount current directory for live reload
       - ./logs:/var/log
@@ -29,6 +30,12 @@ services:
     # depends_on:
     #   - redis
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${API_PORT}/api/v1/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
   # redis:
   #   image: "redis:alpine"
   #   container_name: redis

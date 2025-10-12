@@ -61,10 +61,14 @@ PAYLOAD_LOG_FILE = os.getenv('PAYLOAD_LOG_FILE', 'payload.log')
 class Settings:
     """Configuration settings for the application"""
     # API Configuration
-    API_TITLE = "MNP Gateway API"
-    API_DESCRIPTION = "Gateway for handling MNP queries between BSS and Central Node"
-    API_VERSION = "1.0.0"
-    API_V1_PREFIX = "/api/v1"
+    # API_TITLE = "MNP Gateway API"
+    # API_DESCRIPTION = "Gateway for handling MNP queries between BSS and Central Node"
+    # API_VERSION = "1.0.0"
+    # API_V1_PREFIX = "/api/v1"
+    API_TITLE = os.getenv('API_TITLE', 'MNP Gateway API')
+    API_DESCRIPTION = os.getenv('API_DESCRIPTION', 'Gateway for handling MNP queries between BSS and Central Node')
+    API_VERSION = os.getenv('API_VERSION', '1.0.0')
+    API_PREFIX = os.getenv('API_PREFIX', '/api/v1')
     
     # Server Configuration
     HOST = "0.0.0.0"
@@ -115,8 +119,10 @@ class Settings:
     SAVE_PAYLOAD_TO_LOG = int(os.getenv('SAVE_PAYLOAD_TO_LOG', '0'))
     PAYLOAD_LOG_FILE = os.getenv('PAYLOAD_LOG_FILE', 'payload.log')
 
-    IGNORE_WORKING_HOURS: bool = bool(strtobool(os.getenv('IGNORE_WORKING_HOURS', 'false')))
+    IGNORE_WORKING_HOURS = int(os.getenv('IGNORE_WORKING_HOURS', '0'))  # Default to 1 (Falsoe)
 
+    SWAGGER_USERNAME = os.getenv('SWAGGER_USERNAME', 'admin')
+    SWAGGER_PASSWORD = os.getenv('SWAGGER_PASSWORD', 'secret@123')
 
     # Database configuration as dict (for existing db_utils compatibility)
     @property
