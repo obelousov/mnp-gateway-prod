@@ -124,6 +124,9 @@ class Settings:
     SWAGGER_USERNAME = os.getenv('SWAGGER_USERNAME', 'admin')
     SWAGGER_PASSWORD = os.getenv('SWAGGER_PASSWORD', 'secret@123')
 
+    API_USERNAME = os.getenv('API_USERNAME', 'apiuser')
+    API_PASSWORD = os.getenv('API_PASSWORD', 'api@password')
+
     # Database configuration as dict (for existing db_utils compatibility)
     @property
     def mysql_config(self) -> dict:

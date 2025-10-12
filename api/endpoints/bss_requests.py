@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, status, Header
+from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from config import settings
 import time
 from services.database_service import save_portin_request_db, save_cancel_request_db, save_portability_request_new
@@ -9,11 +10,23 @@ from typing import Optional, Union
 from datetime import datetime, date
 import pytz
 from enum import Enum
+from services.auth import verify_basic_auth
+from fastapi.openapi.docs import get_swagger_ui_html
 
 router = APIRouter()
 
+# Create security instance in this file
+security = HTTPBasic()
+
+# To secure Swagger docs
+@router.get("/docs", include_in_schema=False)
+async def get_documentation(username: str = Depends(verify_basic_auth)):
+    """Serve Swagger UI documentation with Basic Auth protection"""
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="Docs")
+
 @router.get(
     "/healthcheck",
+    dependencies=[Depends(verify_basic_auth)],
     summary="Health Check",
     description="Check the health status of the MNP Gateway service",
     response_description="Service health status with timestamp",
@@ -186,6 +199,7 @@ class PortInResponse(BaseModel):
 @router.post(
     '/port-in', 
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(verify_basic_auth)],
     response_model=PortInResponse,
     summary="Submit Port-In Request",
     description="""
@@ -304,6 +318,7 @@ class CancelPortabilityResponse(BaseModel):
 @router.post(
     '/cancel', 
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(verify_basic_auth)],
     response_model=CancelPortabilityResponse,
     summary="Submit Portability Cancellation Request",
     description="""

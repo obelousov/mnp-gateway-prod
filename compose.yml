@@ -31,7 +31,12 @@ services:
     #   - redis
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${API_PORT}/api/v1/healthcheck"]
+      test: [
+         "CMD", 
+        "curl", 
+        "-f", 
+        "-u", "${API_USERNAME}:${API_PASSWORD}",
+        "http://localhost:${API_PORT}/api/v1/healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
