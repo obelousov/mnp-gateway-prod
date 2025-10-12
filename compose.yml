@@ -30,22 +30,15 @@ services:
     # depends_on:
     #   - redis
     restart: unless-stopped
-    healthcheck:
-      test: [
-         "CMD", 
-        "curl", 
-        "-f", 
-        "-u", "${API_USERNAME}:${API_PASSWORD}",
-        "http://localhost:${API_PORT}/api/v1/healthcheck"]
+    healthcheck:  # ← This is sufficient for single container
+      test: ["CMD", "curl", "-f", "-u", "${API_USERNAME}:${API_PASSWORD}", "http://localhost:${API_PORT}/api/v1/healthcheck"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-  # redis:
-  #   image: "redis:alpine"
-  #   container_name: redis
-  #   ports:
-  #     - "6379:6379"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mnp-api.rule=Host(`${API_DOMAIN}`)"
+      - "traefik.http.routers.mnp-api.entrypoints=websecure"
+      - "traefik.http.routers.mnp-api.tls=true"
+  
   db:
     image: mariadb:latest
     container_name: db-mnp
@@ -177,6 +170,22 @@ services:
     environment:
       - TZ=${TIME_ZONE}
 
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:8080:8080"
+    command:
+      - --configFile=/config/traefik.yml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik:/config
+    networks:
+      - internal-network
+      
 volumes:
   logs:
   db_data:

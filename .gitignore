@@ -2,3 +2,6 @@
 __pycache__/
 logs/
 test.py
+traefik/acme/acme.json
+traefik/certs/certificate.crt
+traefik/certs/private.key

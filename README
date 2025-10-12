@@ -1,5 +1,7 @@
- curl http://localhost:8090/api/v1/health
+curl http://localhost:8090/api/v1/health
 {"status":"healthy","service":"MNP Gateway API","version":"1.0.0","timestamp":1759602021.7271955}
+
+https://mnp-api.olbe.tech/api/v1/healthcheck
 
 curl http://localhost:8090
 {"message":"MNP Gateway Service is running"}
@@ -10,6 +12,20 @@ curl -X POST http://localhost:8090/api/v1/query-msisdn
 adminer
 root:root
 http://localhost:8060/?server=db&username=pondphone&db=mnp_database
+
+traefik dashboard
+http://localhost:8080/dashboard/
+http://localhost:8080/dashboard/#/http/routers
+
+swagger docs
+https://mnp-api.olbe.tech/docs
+
+curl -k -u "apiuser:api@password" https://mnp-api.olbe.tech/api/v1/healthcheck
+
+to generate self-signed certifciate for testing:
+openssl req -x509 -nodes -days 365 -newkey rsa:2048   -keyout traefik/certs/private.key   -out traefik/certs/certificate.crt   -subj "/C=US/ST=State/L=City/O=MNP/CN=mnp-api.olbe.tech"   -addext "subjectAltName=DNS:mnp-api.olbe.tech,DNS:localhost,IP:127.0.0.1"
+  705  openssl x509 -in traefik/certs/certificate.crt -text -noout | grep -A 5 "X509v3"
+
 
 -- Create the database
 CREATE DATABASE mnp_database CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

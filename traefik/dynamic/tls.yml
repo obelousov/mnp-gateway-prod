@@ -1,0 +1,4 @@
+tls:
+  certificates:
+    - certFile: "/config/certs/certificate.crt"
+      keyFile: "/config/certs/private.key"
