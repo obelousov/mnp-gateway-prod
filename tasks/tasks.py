@@ -347,3 +347,147 @@ def callback_bss(self, mnp_request_id, session_code, msisdn, response_status):
         if connection and connection.is_connected():
             cursor.close()
             connection.close()
+
+@app.task(bind=True, max_retries=3)
+def submit_to_central_node_cancel(self, mnp_request_id):
+    """
+    Task to submit a cancel request to the Central Node.
+    """
+    logger.debug("ENTER submit_to_central_node_cancel with req_id %s", mnp_request_id)
+    connection = None
+    try:
+        # 1. Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        # 2. Fetch the request data from database
+        # cursor.execute("SELECT * FROM portability_requests WHERE id = %s", (mnp_request_id,))
+        current_time = datetime.now(container_tz)
+        print(f"Send Cancel to NC: current time {current_time}")
+        cursor.execute("SELECT * FROM portability_requests WHERE id = %s AND %s > scheduled_at",(mnp_request_id, current_time))
+        # cursor.execute("SELECT * FROM portability_requests WHERE id = %s AND NOW() > scheduled_at",(mnp_request_id,))
+        mnp_request = cursor.fetchone()
+        status_nc_old = mnp_request['status_nc'] if mnp_request else 'NOT_FOUND'
+        
+        if not mnp_request:
+            print(f"Cancel submit to NC: request {mnp_request_id} not found or not yet scheduled")
+            return f"Cancel submit to NC: request {mnp_request_id} not found or not yet scheduled"
+
+        response_status = mnp_request['response_status']
+
+        if response_status in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN']:
+            return f"Request {mnp_request_id} is in status {response_status}, no further submission needed"
+
+        # 3. Prepare SOAP envelope (use your existing logic)
+
+        # Convert JSON to SOAP request
+        # soap_request = json_to_soap_request(mnp_request)
+        logger.debug("Cancel submit to NC: Generated SOAP Request:")
+        # soap_payload = json_from_db_to_soap(mnp_request)  # function to create SOAP
+        soap_payload = json_from_db_to_soap_new(mnp_request)  # function to create SOAP
+        # print(soap_payload)
+        # Conditional payload logging
+        log_payload('NC', 'PORT_IN', 'REQUEST', str(soap_payload))
+
+        # 4. Try to send the request to Central Node
+        if not WSDL_SERVICE_SPAIN_MOCK:
+            raise ValueError("WSDL_SERVICE_SPAIN_MOCK environment variable is not set.")
+        current_retry = self.request.retries
+        logger.info("Attempt %d for request %s", current_retry+1, mnp_request_id)
+        print(f"Submit to NC: Attempt {current_retry+1} for request {mnp_request_id}")
+        response = requests.post(WSDL_SERVICE_SPAIN_MOCK, 
+                               data=soap_payload, 
+                               headers={'Content-Type': 'text/xml'}, 
+                               timeout=30)
+        response.raise_for_status()
+
+        # 5. Parse the SOAP response (use your existing logic)
+        # session_code, status = parse_soap_response_list(response.text,)
+        response_code, description, reference_code = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+        print(f"Submit to NC: Received response: response_code={response_code}, description={description}, reference_code={reference_code}")
+
+        # Conditional payload logging
+        log_payload('NC', 'PORT_IN', 'RESPONSE', str(response.text))
+
+        # Assign status based on response_code
+        if not response_code or not response_code.strip():
+            status_nc = "PENDING_NO_RESPONSE_CODE_RECEIVED"
+        else:
+            response_code_upper = response_code.strip().upper()
+            status_nc = "PENDING_RESPONSE" if response_code_upper == 'ASOL' else "PENDING_CONFIRMATION"
+
+        # Check if status actually changed
+        status_changed = (status_nc != status_nc_old)
+
+        if status_changed:
+            if status_nc == "PENDING_RESPONSE":
+            # Special handling for ASOL status - reschedule at the next timeband
+                _, scheduled_at = calculate_countdown(with_jitter=True)
+                logger.info("Status changed to PENDING_RESPONSE (ASOL), rescheduling for %s", scheduled_at)
+        
+                update_query = """
+                    UPDATE portability_requests 
+                    SET status_nc = %s, scheduled_at = %s, response_status = %s, reference_code = %s, description = %s, updated_at = NOW() 
+                    WHERE id = %s
+                    """
+                cursor.execute(update_query, (status_nc, scheduled_at, response_code, reference_code, description, mnp_request_id))
+                connection.commit()
+        else:
+            # Should not come here normally, but just in case 
+            logger.info("No status change for request %s", mnp_request_id)
+            initial_delta = timedelta(seconds=PENDING_REQUESTS_TIMEOUT)  # try again in 60 seconds
+            _, _, scheduled_at = calculate_countdown_working_hours(
+                        delta=initial_delta, 
+                        with_jitter=True)
+             # Update the database with response
+            update_query = """
+                        UPDATE portability_requests 
+                        SET response_status = %s, description = %s, status_nc = %s, scheduled_at = %s, updated_at = NOW() 
+                        WHERE id = %s
+                        """
+            cursor.execute(update_query, (response_code, description, status_nc, scheduled_at, mnp_request_id))
+            connection.commit()
+
+    except requests.exceptions.RequestException as exc:
+        current_retry = self.request.retries
+    
+        # Convert exception to string for database storage
+        error_description = str(exc)
+    
+        if connection is None:
+            connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+    
+        if current_retry < self.max_retries:
+            # Still have retries left - update and retry
+            print(f"Request failed, retrying ({current_retry + 1}/{self.max_retries}): {exc}")
+            status_nc = "REQUEST_FAILED"
+        
+            update_query = """
+            UPDATE portability_requests 
+            SET status_nc = %s, retry_number = %s, error_description = %s, updated_at = NOW() 
+            WHERE id = %s
+        """
+            cursor.execute(update_query, (status_nc, current_retry + 1, error_description, mnp_request_id))
+            connection.commit()
+        
+            # Retry with exponential backoff
+            # countdown = 60 * (2 ** current_retry)  # 60, 120, 240 seconds
+            countdown = 60
+            raise self.retry(exc=exc, countdown=countdown)
+        else:
+            # Max retries exceeded - final failure
+            print(f"Max retries exceeded for request {mnp_request_id}: {exc}")
+            status_nc = "MAX_RETRIES_EXCEEDED"
+        
+            update_query = """
+                UPDATE portability_requests 
+                SET status_nc = %s, retry_number = %s, error_description = %s, updated_at = NOW() 
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (status_nc, current_retry + 1, error_description, mnp_request_id))
+            connection.commit()
+    finally:
+        if connection and connection.is_connected():
+            cursor.close()
+            connection.close()

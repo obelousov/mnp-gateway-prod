@@ -51,10 +51,10 @@ CANCEL_PORT_IN_REQUEST_TEMPLATE = """<soapenv:Envelope xmlns:soapenv="http://sch
    <soapenv:Header/>
    <soapenv:Body>
       <por:peticionCancelarSolicitudAltaPortabilidadMovil>
-         <v1:codigoSesion>?</v1:codigoSesion>
-         <por:codigoReferencia>?</por:codigoReferencia>
-         <por:causaEstado>?</por:causaEstado>
-         <por:cancelacionIniciadaPorDonante>?</por:cancelacionIniciadaPorDonante>
+         <v1:codigoSesion>{session_code}</v1:codigoSesion>
+         <por:codigoReferencia>{reference_code}</por:codigoReferencia>
+         <por:causaEstado>{cancellation_reason}</por:causaEstado>
+         <por:cancelacionIniciadaPorDonante>{cancellation_initiated_by_donor}</por:cancelacionIniciadaPorDonante>
       </por:peticionCancelarSolicitudAltaPortabilidadMovil>
    </soapenv:Body>
 </soapenv:Envelope>

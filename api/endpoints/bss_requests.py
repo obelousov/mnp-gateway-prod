@@ -218,7 +218,7 @@ class PortInResponse(BaseModel):
     4. Status check task initiated from central schduler (pending_requests task)
     """,
     response_description="Request accepted and queued for processing",
-    tags=["Portability Operations"]
+    tags=["Spain: Portability Operations"]
 )
 async def portin_request(alta_data: PortInRequest):
     """
@@ -339,7 +339,7 @@ class CancelPortabilityResponse(BaseModel):
     **Note:** Only pending portability requests can be cancelled.
     """,
     response_description="Cancellation request accepted and queued for processing",
-    tags=["Portability Operations"],
+    tags=["Spain: Portability Operations"],
     responses={
         202: {
             "description": "Cancellation request accepted successfully",

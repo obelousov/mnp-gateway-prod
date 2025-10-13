@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from typing import Dict, List, Optional, Tuple
 # from db_utils import get_db_connection
 from services.database_service import get_db_connection
-from templates.soap_templates import PORTABILITY_REQUEST_TEMPLATE, CHECK_PORT_IN_STATUS_TEMPLATE
+from templates.soap_templates import PORTABILITY_REQUEST_TEMPLATE, CHECK_PORT_IN_STATUS_TEMPLATE, CANCEL_PORT_IN_REQUEST_TEMPLATE
 # from config import logger
 from services.logger import logger, payload_logger, log_payload
 
@@ -343,3 +343,17 @@ def parse_soap_response_list(soap_xml: str, requested_fields: List[str]) -> Tupl
         result = [None] * len(requested_fields)
     
     return tuple(result)
+
+def json_from_db_to_soap_cancel(json_data):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER json_from_db_to_soap_cancel() %s", json_data)
+    # print("Received JSON data:", json_data)
+     
+    return CANCEL_PORT_IN_REQUEST_TEMPLATE.format(
+        session_code=json_data.get('session_code', ''),
+        reference_code=json_data.get('refeernce_code'),
+        cancellation_reason=json_data.get('cancellation_reason', ''),
+        cancellation_initiated_by_donor=json_data.get('cancellation_initiated_by_donor', '')
+    )
