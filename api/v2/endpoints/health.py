@@ -17,6 +17,7 @@ router = APIRouter()
     summary="Health Check V2",
     description="Check the health status of the MNP Gateway service",
     response_description="Service health status with timestamp",
+    include_in_schema=False,  # This hides the endpoint from Swagger)
     tags=["Monitoring"]
 )
 async def healthcheck():

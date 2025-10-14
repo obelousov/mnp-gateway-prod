@@ -6,6 +6,7 @@ from config import settings
 from services.logger import logger, payload_logger, log_payload
 import secrets
 from api.v2.endpoints import health as health_v2
+from api.v1 import bss
 
 logger.debug("Starting MNP Gateway API")
 
@@ -64,6 +65,12 @@ app.include_router(
     health_v2.router, 
     prefix=settings.API_PREFIX_V2,      # Refer as settings.API_V1_PREFIX
     tags=["Health/v2"]
+)
+
+app.include_router(
+    bss.router,
+    prefix=settings.API_PREFIX,      # Refer as settings.API_V1_PREFIX
+    # tags=["BSS Webhook"]
 )
 
 @app.get("/",
