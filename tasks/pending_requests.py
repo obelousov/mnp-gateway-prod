@@ -13,7 +13,7 @@ import pytz
 # from db_utils import get_db_connection
 from services.database_service import get_db_connection
 # from config import logger
-from tasks.tasks import submit_to_central_node, check_status, callback_bss
+from tasks.tasks import submit_to_central_node, check_status, callback_bss, submit_to_central_node_cancel
 from services.logger import logger, payload_logger, log_payload
 from config import settings
 
@@ -54,7 +54,10 @@ def process_pending_requests():
             try:
                 logger.info("Processing Request ID %s", request['id'])
                 # Process the request asynchronously
-                check_single_request.delay(request['id'], request['status_nc'], request['session_code'], request['msisdn'], request['response_status'], request.get('status_bss'), request.get('reference_code'))
+                check_single_request.delay(request['id'], request['status_nc'], 
+                                           request['session_code'], request['msisdn'], 
+                                           request['response_status'], request.get('status_bss'), 
+                                           request.get('reference_code'), request.get('request_type'))
                 processed_count += 1
                 
             except (mysql.connector.Error, requests.exceptions.RequestException) as e:
@@ -72,7 +75,7 @@ def process_pending_requests():
         logger.error("Database or request error in process_pending_requests: %s", e)
 
 @app.task
-def check_single_request(request_id, status_nc, session_code, msisdn, response_status, status_bss,reference_code):
+def check_single_request(request_id, status_nc, session_code, msisdn, response_status, status_bss,reference_code, request_type):
     """Check a single MNP request and schedule next check if needed"""
     logger.debug("ENTER check_single_request() with req_id: %s, status_nc %s, status_bss %s, msisdn %s, reference_code %s", request_id, status_nc, status_bss, msisdn, reference_code)
     # logger.debug("Func: check single request -- %s reference_code %s", request_id, reference_code)
@@ -82,12 +85,19 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
             with_jitter=True)
         a_seconds = int(a.total_seconds())
 
-        if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION","REQUEST_FAILED"]:
-            if response_status not in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN']:
-                submit_to_central_node.apply_async(
+        # if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION","REQUEST_FAILED"]:
+        if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION"]:
+            if request_type == "CANCELLATION" and response_status not in ['ACAN',"400","404"]:
+                submit_to_central_node_cancel.apply_async(
                     args=[request_id],
                     countdown=a_seconds
-            )
+                )
+            else:
+                if response_status not in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN']:
+                    submit_to_central_node.apply_async(
+                        args=[request_id],
+                        countdown=a_seconds
+                )
 
         if status_nc in ["PENDING_RESPONSE","PORT_IN_CONFIRMED"]:
             check_status.apply_async(
@@ -123,7 +133,7 @@ def get_due_requests():
         
     logger.debug("ENTER get_due_requests()")
     query = """
-    SELECT id, status_nc, session_code, msisdn, response_status, status_bss, reference_code
+    SELECT id, status_nc, session_code, msisdn, response_status, status_bss, reference_code, request_type
     FROM portability_requests 
     WHERE (
         (status_nc LIKE '%PENDING%' OR status_nc LIKE '%REQUEST_FAILED%')
@@ -131,7 +141,7 @@ def get_due_requests():
         OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_IN%')
     )
     AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-    AND request_type IN ('port-in', 'PORT-IN', 'Port-In', 'PORT_IN')
+    AND UPPER(request_type) IN ('CANCELLATION', 'PORT_IN')
     AND country_code = 'ESP'
     """
 
@@ -190,39 +200,6 @@ def get_current_status(request_id: int) -> Optional[str]:
     # except Error as e:  # Removed requests.exceptions.RequestException as it's not relevant for DB operations
     #     print(f"Database error while fetching due requests: {e}")
     #     return []  # Return empty list on error
-    finally:
-        # Close cursor and connection
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
-
-def mark_request_in_progress(request_id):
-    """Mark request as being processed"""
-    query = """
-    UPDATE portability_requests 
-    SET check_status = 'IN_PROGRESS', last_checked_at = NOW() 
-    WHERE id = %s
-    """
-    connection = None
-    try:
-        connection = get_db_connection()
-        cursor = connection.cursor(dictionary=True)
-        cursor.execute(query, (request_id,))  # Note: parameter should be a tuple
-        connection.commit()
-    except mysql.connector.Error as e:
-        # logging.error("Error marking request %s as in progress: %s", request_id, e)
-        logger.error("Error marking request %s as in progress: %s", request_id, e)
-        if connection:
-            connection.rollback()
-        raise
-        # Implement retry logic here
-    except requests.exceptions.RequestException as e:
-        # logging.error("Request error checking request %s: %s", request_id, e)
-        logger.error("Request error checking request %s: %s", request_id, e)
-        # Implement retry logic here
-    # except Error as e:  # Removed requests.exceptions.RequestException as it's not relevant for DB operations
-    #     print(f"Database error while fetching due requests: {e}")
     finally:
         # Close cursor and connection
         if cursor:

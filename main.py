@@ -5,7 +5,7 @@ from api.endpoints import bss_requests, health, italy_requests
 from config import settings
 from services.logger import logger, payload_logger, log_payload
 import secrets
-
+from api.v2.endpoints import health as health_v2
 
 logger.debug("Starting MNP Gateway API")
 
@@ -58,6 +58,12 @@ app.include_router(
     italy_requests.router, 
     prefix=settings.API_PREFIX,      # Refer as settings.API_V1_PREFIX
     # tags=["BSS Requests"]
+)
+
+app.include_router(
+    health_v2.router, 
+    prefix=settings.API_PREFIX_V2,      # Refer as settings.API_V1_PREFIX
+    tags=["Health/v2"]
 )
 
 @app.get("/",

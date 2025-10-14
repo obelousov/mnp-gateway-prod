@@ -3,7 +3,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from config import settings
 import time
 from services.database_service import save_portin_request_db, save_cancel_request_db, save_portability_request_new
-from tasks.tasks import submit_to_central_node
+from tasks.tasks import submit_to_central_node, submit_to_central_node_cancel
 from services.logger import logger, payload_logger, log_payload
 from pydantic import BaseModel, Field, validator
 from typing import Optional, Union
@@ -428,6 +428,9 @@ async def cancel_portability(request: CancelPortabilityRequest):
         
         # 2. Save to database immediately
         request_id = save_cancel_request_db(alta_data, "CANCELLATION", "ESP")
+
+        # 3. Submit to background task for processing
+        submit_to_central_node_cancel.delay(request_id)
         
         # 3. Return immediate 202 Accepted response
         return {

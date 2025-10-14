@@ -69,7 +69,9 @@ class Settings:
     API_DESCRIPTION = os.getenv('API_DESCRIPTION', 'Gateway for handling MNP queries between BSS and Central Node')
     API_VERSION = os.getenv('API_VERSION', '1.0.0')
     API_PREFIX = os.getenv('API_PREFIX', '/api/v1')
-    
+    API_PREFIX_V2 = os.getenv('API_PREFIX_V2', '/api/v2')
+    API_VERSION_V2 = os.getenv('API_VERSION_V2', '2.0.0')
+
     # Server Configuration
     HOST = "0.0.0.0"
     PORT = 8000
@@ -108,7 +110,11 @@ class Settings:
 
     WSDL_SERVICE_SPAIN_MOCK = os.getenv('WSDL_SERVICE_SPAIN_MOCK', '')
     WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = os.getenv('WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS', '')
+    WSDL_SERVICE_SPAIN_MOCK_CANCEL = os.getenv('WSDL_SERVICE_SPAIN_MOCK_CANCEL', '')
     BSS_WEBHOOK_URL = os.getenv('BSS_WEBHOOK_URL', '')
+    
+    APIGEE_API_KEY = os.getenv('APIGEE_API_KEY', '')
+    APIGEE_API_QUERY_TIMEOUT = int(os.getenv('APIGEE_API_QUERY_TIMEOUT', '10'))  # seconds
 
     PENDING_REQUESTS_TIMEOUT = float(os.getenv('PENDING_REQUESTS_TIMEOUT', '60.0'))  # seconds
    
@@ -142,6 +148,27 @@ class Settings:
             'password': self.DB_PASSWORD,
             'database': self.DB_NAME,
             'port': self.DB_PORT
+        }
+
+    def get_soap_headers(self, soap_action: str = 'IniciarSesion'):
+        """
+        Get SOAP headers for API requests
+        Args: soap_action: The SOAP action to use
+        Returns: dict: Headers for SOAP requests
+        """
+        return {
+            'Content-Type': 'text/xml; charset=utf-8',
+            'SOAPAction': soap_action,
+            'apikey': self.APIGEE_API_KEY
+        }
+    def get_headers_bss(self):
+        """
+        Get JSON headers for callback requests to BSS
+        Returns: dict: Headers for BSS callbacks
+        """
+        return {
+        'Content-Type': 'application/json',
+        'User-Agent': 'MNP-GW/1.0'
         }
 
 # Create a single settings instance

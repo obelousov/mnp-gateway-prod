@@ -1,6 +1,6 @@
 from ast import List
-from datetime import date
-import datetime
+# from datetime import date
+# import datetime
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from fastapi import HTTPException
@@ -10,6 +10,7 @@ from services.database_service import get_db_connection
 from templates.soap_templates import PORTABILITY_REQUEST_TEMPLATE, CHECK_PORT_IN_STATUS_TEMPLATE, CANCEL_PORT_IN_REQUEST_TEMPLATE
 # from config import logger
 from services.logger import logger, payload_logger, log_payload
+from datetime import date, datetime
 
 
 # Namespace definitions
@@ -353,7 +354,7 @@ def json_from_db_to_soap_cancel(json_data):
      
     return CANCEL_PORT_IN_REQUEST_TEMPLATE.format(
         session_code=json_data.get('session_code', ''),
-        reference_code=json_data.get('refeernce_code'),
+        reference_code=json_data.get('reference_code'),
         cancellation_reason=json_data.get('cancellation_reason', ''),
         cancellation_initiated_by_donor=json_data.get('cancellation_initiated_by_donor', '')
     )

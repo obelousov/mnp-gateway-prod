@@ -7,7 +7,7 @@ import mysql.connector
 from mysql.connector import Error
 from dotenv import load_dotenv
 # from soap_utils import create_soap_payload, parse_soap_response, json_to_soap_request, json_from_db_to_soap, parse_soap_response_list, create_status_check_soap
-from services.soap_services import create_soap_payload, parse_soap_response, json_to_soap_request, json_from_db_to_soap, parse_soap_response_list, create_status_check_soap, json_from_db_to_soap_new
+from services.soap_services import parse_soap_response_list, create_status_check_soap, json_from_db_to_soap_new, json_from_db_to_soap_cancel
 # from time_utils import calculate_countdown
 from services.time_services import calculate_countdown
 from datetime import datetime, timedelta
@@ -21,6 +21,7 @@ from services.logger import logger, payload_logger, log_payload
 
 WSDL_SERVICE_SPAIN_MOCK = settings.WSDL_SERVICE_SPAIN_MOCK
 WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = settings.WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS
+WSDL_SERVICE_SPAIN_MOCK_CANCEL = settings.WSDL_SERVICE_SPAIN_MOCK_CANCEL
 BSS_WEBHOOK_URL = settings.BSS_WEBHOOK_URL
 
 PENDING_REQUESTS_TIMEOUT = settings.PENDING_REQUESTS_TIMEOUT  # seconds
@@ -89,10 +90,11 @@ def submit_to_central_node(self, mnp_request_id):
         current_retry = self.request.retries
         logger.info("Attempt %d for request %s", current_retry+1, mnp_request_id)
         print(f"Submit to NC: Attempt {current_retry+1} for request {mnp_request_id}")
+
         response = requests.post(WSDL_SERVICE_SPAIN_MOCK, 
-                               data=soap_payload, 
-                               headers={'Content-Type': 'text/xml'}, 
-                               timeout=30)
+                               data=soap_payload,
+                               headers=settings.get_soap_headers('IniciarSesion'),
+                               timeout=settings.APIGEE_API_QUERY_TIMEOUT)
         response.raise_for_status()
 
         # 5. Parse the SOAP response (use your existing logic)
@@ -203,10 +205,11 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
 
         if not WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS:
             raise ValueError("WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS environment variable is not set.")
+        
         response = requests.post(WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS, 
-                               data=consultar_payload, 
-                               headers={'Content-Type': 'text/xml'}, 
-                               timeout=30)
+                               data=consultar_payload,
+                               headers=settings.get_soap_headers('IniciarSesion'),
+                               timeout=settings.APIGEE_API_QUERY_TIMEOUT)
         response.raise_for_status()
 
         # new_status = parse_soap_response(response.text)  # Parse the response
@@ -294,18 +297,13 @@ def callback_bss(self, mnp_request_id, session_code, msisdn, response_status):
         # "timestamp": self._get_current_timestamp()  # Optional: add timestamp
     }
     
-    headers = {
-        'Content-Type': 'application/json',
-        'User-Agent': 'MNP-GW/1.0'
-    }
-    
     try:
         # Send POST request
         response = requests.post(
             BSS_WEBHOOK_URL,
             json=payload,
-            headers=headers,
-            timeout=10  # 10 seconds timeout
+            headers=settings.get_headers_bss(),
+            timeout=settings.APIGEE_API_QUERY_TIMEOUT
         )
         
         # Check if request was successful
@@ -384,41 +382,72 @@ def submit_to_central_node_cancel(self, mnp_request_id):
         # soap_request = json_to_soap_request(mnp_request)
         logger.debug("Cancel submit to NC: Generated SOAP Request:")
         # soap_payload = json_from_db_to_soap(mnp_request)  # function to create SOAP
-        soap_payload = json_from_db_to_soap_new(mnp_request)  # function to create SOAP
+        # soap_payload = json_from_db_to_soap_new(mnp_request)  # function to create SOAP
+        soap_payload = json_from_db_to_soap_cancel(mnp_request)
         # print(soap_payload)
         # Conditional payload logging
-        log_payload('NC', 'PORT_IN', 'REQUEST', str(soap_payload))
+        log_payload('NC', 'CANCEL', 'REQUEST', str(soap_payload))
 
         # 4. Try to send the request to Central Node
-        if not WSDL_SERVICE_SPAIN_MOCK:
-            raise ValueError("WSDL_SERVICE_SPAIN_MOCK environment variable is not set.")
+        if not WSDL_SERVICE_SPAIN_MOCK_CANCEL:
+            raise ValueError("WSDL_SERVICE_SPAIN_MOCK_CANCEL environment variable is not set.")
         current_retry = self.request.retries
         logger.info("Attempt %d for request %s", current_retry+1, mnp_request_id)
-        print(f"Submit to NC: Attempt {current_retry+1} for request {mnp_request_id}")
-        response = requests.post(WSDL_SERVICE_SPAIN_MOCK, 
-                               data=soap_payload, 
-                               headers={'Content-Type': 'text/xml'}, 
-                               timeout=30)
+        print(f"Cancel submit to NC: Attempt {current_retry+1} for request {mnp_request_id}")
+        
+        response = requests.post(WSDL_SERVICE_SPAIN_MOCK_CANCEL,
+                               data=soap_payload,
+                               headers=settings.get_soap_headers('IniciarSesion'),
+                               timeout=settings.APIGEE_API_QUERY_TIMEOUT)
+        
         response.raise_for_status()
 
         # 5. Parse the SOAP response (use your existing logic)
         # session_code, status = parse_soap_response_list(response.text,)
         response_code, description, reference_code = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
-        print(f"Submit to NC: Received response: response_code={response_code}, description={description}, reference_code={reference_code}")
+        print(f"Cancel to NC: Received response: response_code={response_code}, description={description}, reference_code={reference_code}")
 
         # Conditional payload logging
-        log_payload('NC', 'PORT_IN', 'RESPONSE', str(response.text))
+        log_payload('NC', 'CANCEL', 'RESPONSE', str(response.text))
+# Received response: 
+# response_code=400, description=Campos obligatorios faltantes: fechaSolicitudPorAbonado, codigoOperadorDonante, 
+# codigoOperadorReceptor, codigoContrato, NRNReceptor, MSISDN, reference_code=ERROR_MISSING_FIELDS
 
-        # Assign status based on response_code
+        response_code_upper = ""
         if not response_code or not response_code.strip():
             status_nc = "PENDING_NO_RESPONSE_CODE_RECEIVED"
         else:
             response_code_upper = response_code.strip().upper()
-            status_nc = "PENDING_RESPONSE" if response_code_upper == 'ASOL' else "PENDING_CONFIRMATION"
+    
+        # Handle 4xx client error responses (400, 401, 404, etc.)
+        if response_code_upper.startswith('4'):
+            status_nc = "REQUEST_FAILED"
+        # Handle 5xx server error responses
+        elif response_code_upper.startswith('5'):
+            status_nc = "SERVER_ERROR"
+        # Handle specific success codes
+        elif response_code_upper == 'ASOL':
+            status_nc = "PENDING_RESPONSE"
+        elif response_code_upper == 'ACAN':
+            status_nc = "CANCEL_CONFIRMED"
+        else:
+            status_nc = "PENDING_CONFIRMATION"
+        
+        logger.info("Cancel: status nc changed %s status_old %s", status_nc,status_nc_old)
+        # Assign status based on response_code
+        if status_nc in ["REQUEST_FAILED","SERVER_ERROR","CANCEL_CONFIRMED"]:
+            pass  # keep as is
+        else:
+            if not response_code or not response_code.strip():
+                status_nc = "PENDING_NO_RESPONSE_CODE_RECEIVED"
+            else:
+                response_code_upper = response_code.strip().upper()
+                status_nc = "PENDING_RESPONSE" if response_code_upper == 'ASOL' else "PENDING_CONFIRMATION"
 
         # Check if status actually changed
         status_changed = (status_nc != status_nc_old)
 
+        logger.info("Cancel: status_changed %s status_nc %s", status_changed, status_nc)
         if status_changed:
             if status_nc == "PENDING_RESPONSE":
             # Special handling for ASOL status - reschedule at the next timeband
@@ -431,6 +460,19 @@ def submit_to_central_node_cancel(self, mnp_request_id):
                     WHERE id = %s
                     """
                 cursor.execute(update_query, (status_nc, scheduled_at, response_code, reference_code, description, mnp_request_id))
+                connection.commit()
+
+            if status_nc in ["REQUEST_FAILED","SERVER_ERROR","CANCEL_CONFIRMED"]:
+            # Special handling for ASOL status - reschedule at the next timeband
+                _, scheduled_at = calculate_countdown(with_jitter=True)
+                logger.info("Status changed to %s, not rescheduled anymore", status_nc)
+        
+                update_query = """
+                    UPDATE portability_requests 
+                    SET status_nc = %s, response_status = %s, reference_code = %s, description = %s, updated_at = NOW() 
+                    WHERE id = %s
+                    """
+                cursor.execute(update_query, (status_nc, response_code, reference_code, description, mnp_request_id))
                 connection.commit()
         else:
             # Should not come here normally, but just in case 
