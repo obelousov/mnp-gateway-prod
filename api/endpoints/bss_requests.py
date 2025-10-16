@@ -248,7 +248,13 @@ async def portin_request(alta_data: PortInRequest):
         log_payload('BSS', 'PORT_IN', 'REQUEST', str(alta_data_dict))
 
         # 1. & 2. Create and save the DB record
-        new_request_id = save_portability_request_new(alta_data_dict, 'PORT_IN', 'ESP')        
+        new_request_id = save_portability_request_new(alta_data_dict, 'PORT_IN', 'ESP')
+        if not new_request_id:
+           raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Failed to create portability request record"
+            )
+        logger.info("Port-in request saved with ID: %s", new_request_id)
         # 3. Launch the background task, passing the ID of the new record
         submit_to_central_node.delay(new_request_id)
 
@@ -260,11 +266,24 @@ async def portin_request(alta_data: PortInRequest):
             "status": "PROCESSING"
         }
         
+    except HTTPException:
+        # Re-raise existing HTTP exceptions
+        raise
+        
+    except ValueError as e:
+        # Data validation errors
+        logger.warning("Validation error: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid request: {str(e)}"
+        ) from e
+        
     except Exception as e:
-        logger.error("Error in port-in endpoint: %s", str(e))
+        # All other unexpected errors
+        logger.error("Server error processing port-in: %s", str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process request: {str(e)}"
+            detail="Internal server error processing request"
         ) from e
 
 class CancellationReason(str, Enum):
