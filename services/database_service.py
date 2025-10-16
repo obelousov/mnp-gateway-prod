@@ -148,8 +148,8 @@ def save_cancel_request_db(request_data: dict, request_type: str = 'CANCEL', cou
         insert_query = """
         INSERT INTO portability_requests 
         (reference_code, msisdn, request_type, cancellation_reason, cancellation_initiated_by_donor, 
-        session_code, scheduled_at, status_nc, status_bss, country_code, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+        session_code, scheduled_at, status_nc, status_bss, country_code, cancel_request_id,created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
         RETURNING id
         """
 
@@ -163,7 +163,8 @@ def save_cancel_request_db(request_data: dict, request_type: str = 'CANCEL', cou
             scheduled_at,
             status_nc,
             status_bss,
-        country_code
+            country_code,
+            request_data["cancel_request_id"]
             )
         # Execute and commit
         cursor.execute(insert_query, values)
@@ -185,8 +186,54 @@ def save_cancel_request_db(request_data: dict, request_type: str = 'CANCEL', cou
         if connection:
             connection.close()
 
-                                
 
+# def check_if_cancel_request_id is presnt id db:
+def check_if_cancel_request_id_in_db(request_data: dict) -> bool:
+    """
+    Check if cancel_request_id present in database (synchronous)
+    Returns True if found, False if not found
+    """
+    logger.debug("ENTER check_if_cancel_request_id_in_db() %s", request_data)
+    
+    required_fields = ["cancel_request_id"]
+    for field in required_fields:
+        if field not in request_data:
+            raise ValueError(f"Missing required field: {field}")
+    
+    connection = None
+    cursor = None
+    try:
+        # Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor()  # No dictionary=True
+        
+        cancel_request_id = request_data["cancel_request_id"]
+        
+        # Query to check if the ID exists in portability_requests table
+        query = """
+            SELECT COUNT(*) as count 
+            FROM portability_requests 
+            WHERE id = %s
+        """
+        cursor.execute(query, (cancel_request_id,))
+        result = cursor.fetchone()
+        
+        # Access tuple by index (COUNT(*) is first column)
+        exists = result[0] > 0 if result else False
+        
+        logger.debug("Cancel request ID %s exists in DB: %s", cancel_request_id, exists)
+        return exists
+        
+    except Exception as e:
+        logger.error("Error checking cancel_request_id %s in DB: %s", 
+                    request_data.get("cancel_request_id"), str(e))
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+                        
 def save_portability_request_new(alta_data: dict, request_type: str = 'PORT_IN', country_code: str = "ESP") -> int:
     """
     Save portability request to optimized table structure

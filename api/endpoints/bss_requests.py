@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from config import settings
 import time
-from services.database_service import save_portin_request_db, save_cancel_request_db, save_portability_request_new
+from services.database_service import save_portin_request_db, save_cancel_request_db, save_portability_request_new, check_if_cancel_request_id_in_db
 from tasks.tasks import submit_to_central_node, submit_to_central_node_cancel
 from services.logger import logger, payload_logger, log_payload
 from pydantic import BaseModel, Field, validator
@@ -279,9 +279,15 @@ class CancelPortabilityRequest(BaseModel):
     Model for portability cancellation request validation | SOAP method: `CancelarSolicitudAltaPortabilidadMovil`
     WSDL Reference: 'por:peticionConsultarProcesosPortabilidadMovil'
     """
+    cancel_request_id: int = Field(
+        ...,
+        description="ID returned by MNP GW on initial portin request",
+        examples=["12"]
+        # min_length=5
+    )
     reference_code: str = Field(
         ...,
-        description="Original portability request reference code | WSDL: `por:codigoReferencia`",
+        description="Portability request reference code returned by NC| WSDL: `por:codigoReferencia`",
         examples=["PORT_IN_12345", "REF_2024_001"],
         min_length=5
     )
@@ -325,7 +331,7 @@ class CancelPortabilityResponse(BaseModel):
     Cancel an existing number portability request.
     
     This endpoint:
-    - Accepts cancellation requests from BSS
+    - Accepts cancellation requests from BSS. Request_id must correspond to existing port-in request ID
     - Immediately saves the cancellation to database
     - Queues the task for Central Node processing
     - Returns immediate 202 Accepted response
@@ -416,9 +422,17 @@ async def cancel_portability(request: CancelPortabilityRequest):
     }
     ```
     """
+    # Validate request exists FIRST (outside try-except)
+    request_data = {"cancel_request_id": request.cancel_request_id}
+    if not check_if_cancel_request_id_in_db(request_data):
+        logger.warning("Portability request ID %s not found for cancellation", request.cancel_request_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Portability request {request.cancel_request_id} not found"
+        )
     try:
-        logger.info("Processing cancellation request for reference: %s, MSISDN: %s", 
-                   request.reference_code, request.msisdn)
+        logger.info("Processing cancellation request for ID: %s, reference: %s, MSISDN: %s", 
+                   request.cancel_request_id, request.reference_code, request.msisdn)
         
         # Convert Pydantic model to dict for existing functions
         alta_data = request.dict()

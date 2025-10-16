@@ -259,8 +259,10 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
             """
             cursor.execute(update_query, (response_code,status_nc, description,mnp_request_id))
             connection.commit()
-            callback_bss.delay(mnp_request_id, session_code, msisdn, response_code)
-            # callback_bss.apply_async(args=[mnp_request_id, session_code, msisdn, response_code], countdown=0)
+            callback_bss.delay(mnp_request_id, reference_code, session_code, response_code, description, None, None)
+            # def callback_bss(self, mnp_request_id, reference_code, session_code, 
+            # response_status, description=None, error_fields=None, porting_window_date=None):
+            
             return "Final status received for id: %s, status: %s", mnp_request_id, response_code
             
             # callback_bss.delay(mnp_request_id)
@@ -277,7 +279,122 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
             connection.close()
 
 @app.task(bind=True, max_retries=3)
-def callback_bss(self, mnp_request_id, session_code, msisdn, response_status):
+def callback_bss(self, mnp_request_id, reference_code, session_code, response_status, description=None, error_fields=None, porting_window_date=None):
+    """
+    REST JSON POST to BSS Webhook with updated English field names
+    
+    Args:
+        mnp_request_id: Unique identifier for the MNP request
+        session_code: Session code for the transaction
+        msisdn: Mobile number
+        response_status: Status to send to webhook
+        description: Optional description message
+        error_fields: Optional list of error field objects
+        porting_window_date: Optional porting window date
+    """
+    logger.debug("ENTER callback_bss() with request_id %s reference_code %s response_status %s", 
+                 mnp_request_id, reference_code, response_status)
+    
+    # Prepare JSON payload with new English field names
+    payload = {
+        "request_id": mnp_request_id,
+        "reference_code": reference_code,
+        "response_code": response_status,
+        "description": description or f"Status update for MNP request {mnp_request_id}",
+        "error_fields": error_fields or [],
+        "porting_window_date": porting_window_date or ""
+    }
+   
+    
+    try:
+        # Send POST request
+        response = requests.post(
+            settings.BSS_WEBHOOK_URL,
+            json=payload,
+            headers=settings.get_headers_bss(),
+            timeout=settings.APIGEE_API_QUERY_TIMEOUT,
+            verify=settings.SSL_VERIFICATION  # Use SSL verification setting
+        )
+        
+        # Check if request was successful
+        if response.status_code == 200:
+            logger.info(
+                "Webhook sent successfully for request_id %s session %s, response_code: %s", 
+                mnp_request_id, session_code, response_status
+            )
+
+            # Update database with the actual scheduled time
+            try: 
+                update_query = """
+                    UPDATE portability_requests 
+                    SET status_bss = %s,
+                    updated_at = NOW() 
+                    WHERE id = %s
+                """
+                connection = get_db_connection()
+                cursor = connection.cursor(dictionary=True)
+                
+                # Map response_code to appropriate status_bss value
+                status_bss="CANCEL_REQUEST_COMPLETED" if response_status=="ACAN" else "NO_RESPONSE_ON CANCEL_RESPONSE"
+                # status_bss = self._map_response_to_status(response_status)
+                cursor.execute(update_query, (status_bss, mnp_request_id))
+                connection.commit()
+                
+                logger.debug(
+                    "Database updated for request %s with status_bss: %s", 
+                    mnp_request_id, status_bss
+                )
+                return True
+                
+            except Exception as db_error:
+                logger.error("Database update failed for request %s: %s", mnp_request_id, str(db_error))
+                return False
+        else:
+            logger.error(
+                "Webhook failed for session %s request_id: %s Status: %s, Response: %s", 
+                session_code, mnp_request_id, response.status_code, response.text
+            )
+            return False
+            
+    except requests.exceptions.Timeout as exc:
+        logger.error("Webhook timeout for session %s request_id %s", session_code, mnp_request_id)
+        self.retry(exc=exc, countdown=120)
+        return False
+    except requests.exceptions.ConnectionError as exc:
+        logger.error("Webhook connection error for session %s request_id %s", session_code, mnp_request_id)
+        self.retry(exc=exc, countdown=120)
+        return False
+    except requests.exceptions.RequestException as exc:
+        logger.error("Webhook error for session %s request_id %s: %s", session_code, mnp_request_id, str(exc))
+        self.retry(exc=exc, countdown=120)
+        return False
+    finally:
+        if 'connection' in locals() and connection and connection.is_connected():
+            cursor.close()
+            connection.close()
+
+def _map_response_to_status(self, response_code):
+    """
+    Map response_code to appropriate status_bss value
+    """
+    status_mapping = {
+        'ASOL': 'REQUEST_ACCEPTED',
+        'ACON': 'PORTIN_CONFIRMED', 
+        'APOR': 'PORTIN_COMPLETED',
+        'AREC': 'PORTIN_REJECTED',
+        '400': 'REQUEST_FAILED',
+        '500': 'SERVER_ERROR'
+    }
+    return status_mapping.get(response_code, 'UNKNOWN_STATUS')
+
+def _get_current_date(self):
+    """
+    Get current date in YYYY-MM-DD format
+    """
+    from datetime import datetime
+    return datetime.now().strftime('%Y-%m-%d')
+
+def callback_bss_1(self, mnp_request_id, session_code, msisdn, response_status):
     """
     REST JSON POST to BSS Webhook
     
@@ -474,6 +591,8 @@ def submit_to_central_node_cancel(self, mnp_request_id):
                     """
                 cursor.execute(update_query, (status_nc, response_code, reference_code, description, mnp_request_id))
                 connection.commit()
+
+                callback_bss.delay(mnp_request_id, reference_code, None, response_code, description, None, None)
         else:
             # Should not come here normally, but just in case 
             logger.info("No status change for request %s", mnp_request_id)
