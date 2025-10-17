@@ -116,6 +116,11 @@ class Settings:
     
     APIGEE_API_KEY = os.getenv('APIGEE_API_KEY', '')
     APIGEE_API_QUERY_TIMEOUT = int(os.getenv('APIGEE_API_QUERY_TIMEOUT', '10'))  # seconds
+    APIGEE_USERNAME = os.getenv('APIGEE_API_USERNAME', '')
+    APIGEE_ACCESS_CODE = os.getenv('APIGEE_API_ACCESS_CODE', '')
+    APIGEE_OPERATOR_CODE = os.getenv('APIGEE_API_OPERATOR_CODE', '')
+    APIGEE_ACCESS_URL = os.getenv('APIGEE_ACCESS_URL', '')
+    APIGEE_PORTABILITY_URL = os.getenv('APIGEE_PORTABILITY_URL', '')
 
     PENDING_REQUESTS_TIMEOUT = float(os.getenv('PENDING_REQUESTS_TIMEOUT', '60.0'))  # seconds
    

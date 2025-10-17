@@ -4,10 +4,10 @@ from ast import List
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from fastapi import HTTPException
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 # from db_utils import get_db_connection
 from services.database_service import get_db_connection
-from templates.soap_templates import PORTABILITY_REQUEST_TEMPLATE, CHECK_PORT_IN_STATUS_TEMPLATE, CANCEL_PORT_IN_REQUEST_TEMPLATE
+from templates.soap_templates import PORTABILITY_REQUEST_TEMPLATE, CHECK_PORT_IN_STATUS_TEMPLATE, CANCEL_PORT_IN_REQUEST_TEMPLATE,CONSULT_PROCESS_PORT_IN,INITIATE_SESSION
 # from config import logger
 from services.logger import logger, payload_logger, log_payload
 from datetime import date, datetime
@@ -173,22 +173,117 @@ def json_from_db_to_soap_new(json_data):
         iccid_optional = f"<por:ICCID>{json_data['iccid']}</por:ICCID>"
     
     # Extract document data from nested structure
-    subscriber_data = json_data.get('subscriber', {})
-    doc_data = subscriber_data.get('identification_document', {})
+    # subscriber_data = json_data.get('subscriber', {})
+    # doc_data = subscriber_data.get('identification_document', {})
     
     return PORTABILITY_REQUEST_TEMPLATE.format(
         session_code=json_data.get('session_code', ''),
         request_date=format_date(json_data.get('requested_at')),  # Changed from 'request_date'
         donor_operator=json_data.get('donor_operator', ''),
         recipient_operator=json_data.get('recipient_operator', ''),
-        id_type=doc_data.get('document_type', 'NIE'),  # Changed from 'id_type'
-        id_number=doc_data.get('document_number', ''),  # Changed from 'id_number'
+        id_type=json_data.get('document_type', 'NIE'),  # Changed from 'id_type'
+        id_number=json_data.get('document_number', ''),  # Changed from 'id_number'
         contract_code=json_data.get('contract_number', ''),  # Changed from 'contract_code'
         nrn_receptor=json_data.get('routing_number', ''),  # Changed from 'nrn_receptor'
         fecha_ventana_optional=fecha_ventana_optional,
         iccid_optional=iccid_optional,
         msisdn=json_data.get('msisdn', '')  # Removed phone_number fallback
     )
+
+def json_from_db_to_soap_new_1_old(json_data, session_code):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    # logger.debug("ENTER json_from_db_to_soap_new_1() %s", json_data)
+    logger.debug("ENTER json_from_db_to_soap_new_1()")
+    # print("Received JSON data:", json_data)
+    
+    # Format dates properly
+    def format_date(value):
+        if isinstance(value, (date, datetime)):
+            return value.strftime('%Y-%m-%d')
+        return str(value) if value is not None else ''
+      
+    # Handle optional fields
+    fecha_ventana_optional = ""
+    if json_data.get('desired_porting_date'):  # Changed from 'porting_window_date'
+        fecha_ventana_optional = f"<por:fechaVentanaCambio>{format_date(json_data['desired_porting_date'])}</por:fechaVentanaCambio>"
+    
+    iccid_optional = ""
+    if json_data.get('iccid'):
+        iccid_optional = f"<por:ICCID>{json_data['iccid']}</por:ICCID>"
+    
+    # Extract document data from nested structure
+    # subscriber_data = json_data.get('subscriber', {})
+    # doc_data = subscriber_data.get('identification_document', {})
+    
+    return PORTABILITY_REQUEST_TEMPLATE.format(
+        session_code=session_code,
+        request_date=format_date(json_data.get('requested_at')),  # Changed from 'request_date'
+        donor_operator=json_data.get('donor_operator', ''),
+        recipient_operator=json_data.get('recipient_operator', ''),
+        document_type=json_data.get('document_type', 'NIE'),  # Changed from 'id_type'
+        document_number=json_data.get('document_number', ''),  # Changed from 'id_number'
+        contract_code=json_data.get('contract_number', ''),  # Changed from 'contract_code'
+        nrn_receptor=json_data.get('routing_number', ''),  # Changed from 'nrn_receptor'
+        fecha_ventana_optional=fecha_ventana_optional,
+        iccid_optional=iccid_optional,
+        msisdn=json_data.get('msisdn', '')  # Removed phone_number fallback
+    )
+
+def json_from_db_to_soap_new_1(json_data, session_code):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER json_from_db_to_soap_new() %s", json_data)
+    
+    def format_date(value):
+        if isinstance(value, (date, datetime)):
+            return value.strftime('%Y-%m-%d')
+        return str(value) if value is not None else ''
+      
+    # Handle optional fields
+    fecha_ventana_optional = ""
+    if json_data.get('desired_porting_date'):
+        fecha_ventana_optional = f"<por:fechaVentanaCambio>{format_date(json_data['desired_porting_date'])}</por:fechaVentanaCambio>"
+    
+    iccid_optional = ""
+    if json_data.get('iccid'):
+        iccid_optional = f"<por:ICCID>{json_data['iccid']}</por:ICCID>"
+    
+    # Use the actual fields from your table with fallbacks
+    first_name = json_data.get('first_name', 'Test')
+    first_surname = json_data.get('first_surname', 'User')
+    second_surname = json_data.get('second_surname', 'Second')
+    nationality = json_data.get('nationality', 'ESP')
+    
+    # Debug output to verify data
+    print("=== PERSONAL DATA FROM DATABASE ===")
+    print(f"first_name: {first_name}")
+    print(f"first_surname: {first_surname}")
+    print(f"second_surname: {second_surname}")
+    print(f"nationality: {nationality}")
+    print("===================================")
+    
+    result = PORTABILITY_REQUEST_TEMPLATE.format(
+        session_code=session_code,
+        request_date=format_date(json_data.get('requested_at')),
+        donor_operator=json_data.get('donor_operator', ''),
+        recipient_operator=json_data.get('recipient_operator', ''),
+        document_type=json_data.get('document_type', 'NIE'),
+        document_number=json_data.get('document_number', ''),
+        first_name=first_name,
+        first_surname=first_surname,
+        second_surname=second_surname,
+        nationality=nationality,
+        contract_code=json_data.get('contract_number', ''),
+        nrn_receptor=json_data.get('routing_number', ''),
+        fecha_ventana_optional=fecha_ventana_optional,
+        iccid_optional=iccid_optional,
+        msisdn=json_data.get('msisdn', '')
+    )
+    
+    return result
 
 def json_from_db_to_soap(json_data):
     """
@@ -358,3 +453,188 @@ def json_from_db_to_soap_cancel(json_data):
         cancellation_reason=json_data.get('cancellation_reason', ''),
         cancellation_initiated_by_donor=json_data.get('cancellation_initiated_by_donor', '')
     )
+
+def create_status_check_soap_nc(mnp_request_id: int, session_code: str, msisdn: str) -> str:
+    """
+    Get request data from DB based on mnp_request_idt
+    """
+    # print ("received mnp_id:", mnp_request_id, session_code, msisdn)
+    logger.info("received mnp_id: %s, session_code: %s, msisdn: %s", mnp_request_id, session_code, msisdn)
+
+    
+    return CONSULT_PROCESS_PORT_IN.format(
+        session_code=session_code,
+        msisdn=msisdn
+    )
+
+def create_initiate_soap(username, access_code,operator_code) -> str:
+    """
+    Get request data from DB based on mnp_request_idt
+    """
+    # print ("received mnp_id:", mnp_request_id, session_code, msisdn)
+    logger.info("received username: %s, access_code: %s, operator_code: %s", username, access_code,operator_code)
+
+    
+    return INITIATE_SESSION.format(
+        username=username,
+        access_code=access_code,
+        operator_code=operator_code
+    )
+
+def parse_soap_response_new(soap_string: str, fields: List[str]) -> List[Any]:
+    """
+    Parse SOAP response and extract requested fields.
+    
+    Args:
+        soap_string: SOAP XML response as string
+        fields: List of field names to extract
+        
+    Returns:
+        List of extracted values in the same order as fields
+        
+    Example:
+        response_code, description, session_code = parse_soap_response(
+            response.text, 
+            ["codigoRespuesta", "descripcion", "codigoSesion"]
+        )
+    """
+    try:
+        # Parse the XML
+        root = ET.fromstring(soap_string)
+        
+        # Register namespaces to handle them properly
+        namespaces = {
+            'S': 'http://schemas.xmlsoap.org/soap/envelope/',
+            'ns2': 'http://nc.aopm.es/v1-10',
+            'ns5': 'http://nc.aopm.es/v1-10/acceso'
+        }
+        
+        # Find the SOAP Body
+        body = root.find('.//S:Body', namespaces)
+        if body is None:
+            raise ValueError("SOAP Body not found")
+        
+        # Extract values for each requested field
+        results = []
+        for field in fields:
+            value = None
+            
+            # Try different namespace prefixes for the field
+            # Some fields are in ns2, some in ns5, etc.
+            for ns_prefix in ['ns2', 'ns5', 'ns3', 'ns4', 'ns6', 'ns7', 'ns8', 'ns9', 'ns10']:
+                if ns_prefix in namespaces:
+                    element = body.find(f'.//{ns_prefix}:{field}', namespaces)
+                    if element is not None and element.text:
+                        value = element.text.strip()
+                        break
+            
+            # If not found with namespace, try without namespace
+            if value is None:
+                element = body.find(f'.//{field}')
+                if element is not None and element.text:
+                    value = element.text.strip()
+            
+            results.append(value)
+        
+        return results
+        
+    except ET.ParseError as e:
+        raise ValueError(f"Failed to parse XML: {e}")
+    except Exception as e:
+        raise ValueError(f"Error parsing SOAP response: {e}")
+
+
+# from typing import Dict, Optional
+
+def parse_soap_response_dict_flat(soap_string: str, fields: List[str]) -> Dict[str, Optional[str]]:
+    """
+    Parse SOAP response and return dictionary of requested fields.
+    Always returns a dictionary with all requested fields (values may be None or str).
+    """
+    # Initialize with None values but specify the type can be str or None
+    result_dict: Dict[str, Optional[str]] = {field: None for field in fields}
+    
+    try:
+        root = ET.fromstring(soap_string)
+        namespaces = {
+            'S': 'http://schemas.xmlsoap.org/soap/envelope/',
+            'ns2': 'http://nc.aopm.es/v1-10',
+            'ns5': 'http://nc.aopm.es/v1-10/acceso'
+        }
+        
+        body = root.find('.//S:Body', namespaces)
+        if body is None:
+            return result_dict
+        
+        for field in fields:
+            value = None
+            for ns_prefix in ['ns2', 'ns5', 'ns3', 'ns4', 'ns6', 'ns7', 'ns8', 'ns9', 'ns10']:
+                if ns_prefix in namespaces:
+                    element = body.find(f'.//{ns_prefix}:{field}', namespaces)
+                    if element is not None and element.text:
+                        value = element.text.strip()
+                        break
+            
+            if value is None:
+                element = body.find(f'.//{field}')
+                if element is not None and element.text:
+                    value = element.text.strip()
+            
+            result_dict[field] = value  # This should now work
+        
+        return result_dict
+        
+    except Exception as e:
+        logger.error("Error parsing SOAP response: %s",{e})
+        return result_dict
+    
+from typing import Dict, Optional, List, Union
+def parse_soap_response_dict(soap_string: str, fields: List[str]) -> Dict[str, Optional[str]]:
+    """
+    Simple SOAP parser that handles namespaces dynamically.
+    """
+    result_dict: Dict[str, Optional[str]] = {field: None for field in fields}
+    
+    try:
+        root = ET.fromstring(soap_string)
+        
+        # Define the namespaces we know about from your XML
+        namespaces = {
+            'S': 'http://schemas.xmlsoap.org/soap/envelope/',
+            'ns2': 'http://nc.aopm.es/v1-10',
+            'ns14': 'http://nc.aopm.es/v1-10/portabilidad'
+        }
+        
+        body = root.find('.//S:Body', namespaces)
+        if body is None:
+            return result_dict
+        
+        # Extract main fields
+        for field in fields:
+            if field == "codigoRespuesta":
+                element = body.find('.//ns2:codigoRespuesta', namespaces)
+                if element is not None and element.text:
+                    result_dict[field] = element.text.strip()
+            
+            elif field == "descripcion":
+                element = body.find('.//ns2:descripcion', namespaces)
+                if element is not None and element.text:
+                    result_dict[field] = element.text.strip()
+            
+            elif field == "error_field":
+                # Get campoErroneo/nombre
+                element = body.find('.//ns2:campoErroneo/ns2:nombre', namespaces)
+                if element is not None and element.text:
+                    result_dict[field] = element.text.strip()
+            
+            elif field == "error_description":
+                # Get campoErroneo/descripcion
+                element = body.find('.//ns2:campoErroneo/ns2:descripcion', namespaces)
+                if element is not None and element.text:
+                    result_dict[field] = element.text.strip()
+        
+        return result_dict
+        
+    except Exception as e:
+        logger.error(f"Error parsing SOAP response: {e}")
+        return result_dict
