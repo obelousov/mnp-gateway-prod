@@ -262,7 +262,8 @@ def save_portability_request_new(alta_data: dict, request_type: str = 'PORT_IN',
             with_jitter=False
         )
 
-        print("Inserting new portability request into database with session_code:", alta_data.get('session_code'))
+        print(f"save_portability_request(): Inserting new portability request into database with session_code: {alta_data.get('session_code')}")
+        logger.debug("save_portability_request(): Inserting new portability request into database with session_code: %s", alta_data.get('session_code'))
         
         insert_query = """
         INSERT INTO portability_requests (

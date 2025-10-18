@@ -730,13 +730,14 @@ def parse_crear_solicitud_response(xml_string: str) -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    mnp_request_id = 64
+    mnp_request_id = 68
     # session_code = "ABC123SESSION"
     msisdn = "600100200"
     session_code = initiate_session()
-    xml_data = check_status(mnp_request_id, session_code, msisdn)
-    # submit_to_central_node_new(mnp_request_id, session_code)
+    # xml_data = check_status(mnp_request_id, session_code, msisdn)
+    submit_to_central_node_new(mnp_request_id, session_code)
 
+    exit()
     result = parse_check_status_resonse(xml_data)
 
     # Print the flat dictionary

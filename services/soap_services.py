@@ -638,3 +638,57 @@ def parse_soap_response_dict(soap_string: str, fields: List[str]) -> Dict[str, O
     except Exception as e:
         logger.error(f"Error parsing SOAP response: {e}")
         return result_dict
+    
+def json_from_db_to_soap_online(json_data, session_code):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER json_from_db_to_soap_new() %s", json_data)
+    
+    def format_date(value):
+        if isinstance(value, (date, datetime)):
+            return value.strftime('%Y-%m-%d')
+        return str(value) if value is not None else ''
+      
+    # Handle optional fields
+    fecha_ventana_optional = ""
+    if json_data.get('desired_porting_date'):
+        fecha_ventana_optional = f"<por:fechaVentanaCambio>{format_date(json_data['desired_porting_date'])}</por:fechaVentanaCambio>"
+    
+    iccid_optional = ""
+    if json_data.get('iccid'):
+        iccid_optional = f"<por:ICCID>{json_data['iccid']}</por:ICCID>"
+    
+    # Use the actual fields from your table with fallbacks
+    first_name = json_data.get('first_name', 'Test')
+    first_surname = json_data.get('first_surname', 'User')
+    second_surname = json_data.get('second_surname', 'Second')
+    nationality = json_data.get('nationality', 'ESP')
+    
+    # Debug output to verify data
+    # print("=== PERSONAL DATA FROM DATABASE ===")
+    # print(f"first_name: {first_name}")
+    # print(f"first_surname: {first_surname}")
+    # print(f"second_surname: {second_surname}")
+    # print(f"nationality: {nationality}")
+    # print("===================================")
+    
+    result = PORTABILITY_REQUEST_TEMPLATE.format(
+        session_code=session_code,
+        request_date=format_date(json_data.get('requested_at')),
+        donor_operator=json_data.get('donor_operator', ''),
+        recipient_operator=json_data.get('recipient_operator', ''),
+        document_type=json_data.get('document_type', 'NIE'),
+        document_number=json_data.get('document_number', ''),
+        first_name=first_name,
+        first_surname=first_surname,
+        second_surname=second_surname,
+        nationality=nationality,
+        contract_code=json_data.get('contract_number', ''),
+        nrn_receptor=json_data.get('routing_number', ''),
+        fecha_ventana_optional=fecha_ventana_optional,
+        iccid_optional=iccid_optional,
+        msisdn=json_data.get('msisdn', '')
+    )
+    
+    return result

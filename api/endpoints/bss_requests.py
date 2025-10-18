@@ -13,6 +13,7 @@ import pytz
 from enum import Enum
 from services.auth import verify_basic_auth
 from fastapi.openapi.docs import get_swagger_ui_html
+from porting.spain_nc import submit_to_central_node_online
 
 router = APIRouter()
 
@@ -254,11 +255,18 @@ class PortInRequest(BaseModel):
         pattern="^[0-9]{9}$"
     )
 
-class PortInResponse(BaseModel):
+class PortInResponse_1(BaseModel):
     message: str = Field(..., examples=["Request accepted"])
     id: Union[str, int] = Field(..., examples=["PORT_IN_12345", 12345], description="Internal request ID")
     session_code: Union[str, int] = Field(..., examples=["13", 13], description="Original session code")
     status: str = Field(..., examples=["PROCESSING"], description="Current request status")    
+
+class PortInResponse(BaseModel):
+    id: int = Field(..., examples=[12345], description="Internal request ID")
+    success: bool = Field(..., examples=[True, False])
+    response_code: Optional[str] = Field(None, examples=["0000 00000", "ACCS PERME"])
+    description: Optional[str] = Field(None, examples=["Operation successful", "No es posible invocar esta operación en horario inhábil"])
+    reference_code: Optional[str] = Field(None, examples=["REF_12345"])
 
 @router.post(
     '/port-in', 
@@ -320,7 +328,42 @@ async def portin_request(alta_data: PortInRequest):
             )
         logger.info("Port-in request saved with ID: %s", new_request_id)
         # 3. Launch the background task, passing the ID of the new record
-        submit_to_central_node.delay(new_request_id)
+        # submit_to_central_node.delay(new_request_id) # Asynchronous version
+        success, response_code, description, reference_code = submit_to_central_node_online(new_request_id)  # Synchronous version for testing
+
+        response_data = {
+        "id": new_request_id,
+        "success": success,
+        "response_code": response_code,
+        "description": description,
+        "reference_code": reference_code
+    }
+
+        # Determine appropriate status code based on success and response_code
+        if success:
+            return response_data  # FastAPI will use 200 by default, or you can set 202
+        else:
+            # Map different error types to appropriate HTTP status codes
+            if response_code in ["NOT_FOUND", "VALIDATION_ERROR"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=response_data
+                )
+            elif response_code == "HTTP_ERROR":
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,  # or 504 Gateway Timeout
+                    detail=response_data
+                )
+            elif response_code == "ACCS PERME":  # Outside business hours
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=response_data
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=response_data
+                )
 
         # 4. Tell the BSS "We got it, processing now."
         return {
