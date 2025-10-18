@@ -248,7 +248,9 @@ def save_portability_request_new(alta_data: dict, request_type: str = 'PORT_IN',
         subscriber_data = alta_data.get('subscriber', {})
         doc_data = subscriber_data.get('identification_document', {})
         personal_data = subscriber_data.get('personal_data', {})
-        name_surname = personal_data.get('name_surname', 'UNKNOWN_SUBSCRIBER')  # Fixed: get from personal_data       
+        first_name = personal_data.get('first_name', 'UNKNOWN_SUBSCRIBER') # Default if missing
+        first_surname = personal_data.get('first_surname', 'UNKNOWN_SUBSCRIBER')
+        second_surname = personal_data.get('second_surname', 'UNKNOWN_SUBSCRIBER')
 
         status_bss="PROCESSING"
         status_nc="PENDING_SUBMIT"
@@ -262,15 +264,14 @@ def save_portability_request_new(alta_data: dict, request_type: str = 'PORT_IN',
 
         print("Inserting new portability request into database with session_code:", alta_data.get('session_code'))
         
-        # FIX: Remove RETURNING id and use lastrowid
         insert_query = """
         INSERT INTO portability_requests (
             session_code, donor_operator, recipient_operator,
             document_type, document_number, contract_number, routing_number,
             desired_porting_date, iccid, msisdn,
             request_type, status_bss, status_nc, scheduled_at, requested_at,
-            country_code, name_surname, nationality
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            country_code, first_name, first_surname, second_surname, nationality
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         values = (
@@ -290,9 +291,43 @@ def save_portability_request_new(alta_data: dict, request_type: str = 'PORT_IN',
             scheduled_at,
             alta_data.get('requested_at'),
             country_code,
-            name_surname,
-            personal_data.get('nationality', 'ESP')
+            first_name,  # Using first_name instead of name_surname
+            first_surname,  # New field
+            second_surname,  # New field
+            personal_data.get('nationality', 'ESP')  # Default to ESP if missing
         )
+
+        # FIX: Remove RETURNING id and use lastrowid
+        # insert_query = """
+        # INSERT INTO portability_requests (
+        #     session_code, donor_operator, recipient_operator,
+        #     document_type, document_number, contract_number, routing_number,
+        #     desired_porting_date, iccid, msisdn,
+        #     request_type, status_bss, status_nc, scheduled_at, requested_at,
+        #     country_code, name_surname, nationality
+        # ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        # """
+
+        # values = (
+        #     alta_data.get('session_code'),
+        #     alta_data.get('donor_operator'),
+        #     alta_data.get('recipient_operator'),
+        #     doc_data.get('document_type'),
+        #     doc_data.get('document_number'),
+        #     alta_data.get('contract_number'),
+        #     alta_data.get('routing_number'),
+        #     alta_data.get('desired_porting_date'),
+        #     alta_data.get('iccid'),
+        #     alta_data.get('msisdn'),
+        #     request_type,
+        #     status_bss,
+        #     status_nc,
+        #     scheduled_at,
+        #     alta_data.get('requested_at'),
+        #     country_code,
+        #     name_surname,
+        #     personal_data.get('nationality', 'ESP')
+        # )
 
         cursor.execute(insert_query, values)
         connection.commit()

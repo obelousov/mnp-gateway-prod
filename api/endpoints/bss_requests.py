@@ -5,7 +5,8 @@ import time
 from services.database_service import save_portin_request_db, save_cancel_request_db, save_portability_request_new, check_if_cancel_request_id_in_db
 from tasks.tasks import submit_to_central_node, submit_to_central_node_cancel
 from services.logger import logger, payload_logger, log_payload
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, field_validator
+import re
 from typing import Optional, Union
 from datetime import datetime, date
 import pytz
@@ -75,6 +76,61 @@ async def query_msisdn_details():
         "timestamp": time.time()
     }
 
+class IdentificationDocument(BaseModel):
+    """ Identification document data | WSDL: `<por:documentoIdentificacion>`"""
+    document_type: str = Field(
+        ...,
+        description="Document type | WSDL: `<por:tipoDocumento>`",
+        examples=["NIE", "DNI", "PASSPORT"]
+    )
+    document_number: str = Field(
+        ...,
+        description="Document number | WSDL: `<por:numeroDocumento>`",
+        examples=["Y30307876", "12345678X"]
+    )
+
+    @field_validator('document_type')
+    def validate_document_type(cls, v): # pylint: disable=no-self-argument
+        """Validate that document_type is one of the allowed types"""
+        allowed_document_types = ["NIE", "CIF", "DNI", "PASSPORT"]
+        if v not in allowed_document_types:
+            raise ValueError(f'document_type must be one of: {", ".join(allowed_document_types)}')
+        return v
+    
+class PersonalData(BaseModel):
+    """ Personal data | WSDL: `<por:datosPersonales>`"""
+    first_name: str = Field(
+        ...,
+        description="First name | WSDL: `<por:nombre>`",
+        examples=["Jose", "Maria"]
+    )
+    first_surname: Optional[str] = Field(
+        None,
+        description="First surname | WSDL: `<por:primerApellido>`",
+        examples=["Garcia", "Lopez"]
+    )
+    second_surname: Optional[str] = Field(
+        None,
+        description="Second surname | WSDL: `<por:segundoApellido>`",
+        examples=["Martinez", "Fernandez"]
+    )
+    nationality: Optional[str] = Field(
+        None,
+        description="Nationality | WSDL: `<por:nacionalidad>`",
+        examples=["ES", "FR", "DE"]
+    )
+
+class Subscriber(BaseModel):
+    """ Subscriber data | WSDL: `<por:abonado>`"""
+    identification_document: IdentificationDocument = Field(
+        ...,
+        description="Identification document data"
+    )
+    personal_data: PersonalData = Field(
+        ...,
+        description="Personal data | WSDL: `<por:datosPersonales>`"
+    )
+
 class PortInRequest(BaseModel):
     """
     Pydantic class to validate Port-In request payload SOAP method: `SolicitarAltaPortabilidadMovil`
@@ -111,54 +167,62 @@ class PortInRequest(BaseModel):
     donor_operator: str = Field(
         ...,
         description="Current operator | WSDL: `<por:codigoOperadorDonante>`",
-        examples=["MOVISTAR", "VODAFONE", "ORANGE", "MASMOVIL"]
+        examples=["123"]
     )
     recipient_operator: str = Field(
         ...,
         description="New operator | WSDL: `<por:codigoOperadorReceptor>`",
-        examples=["LYCA MOVIL"]
+        examples=["345"]
     )
-    subscriber: dict = Field(
+    subscriber: Subscriber = Field(
         ...,
         description="Subscriber data | WSDL: `<por:abonado>`",
         example={
             "identification_document": {
-                "document_type": "NIE",
+                "document_type": "NIE", 
                 "document_number": "Y30307876"
             },
             "personal_data": {
-                "name_surname": "Jose Diego"
+                "first_name": "Jose",
+                "first_surname": "Garcia", 
+                "second_surname": "Martinez",
+                "nationality": "ES"
             }
         }
     )
+    # subscriber: dict = Field(
+    #     ...,
+    #     description="Subscriber data | WSDL: `<por:abonado>`",
+    #     example={
+    #         "identification_document": {
+    #             "document_type": "NIE",
+    #             "document_number": "Y30307876"
+    #         },
+    #         "personal_data": {
+    #             "name_surname": "Jose Diego"
+    #         }
+    #     }
+    # )
+    # @field_validator('msisdn')
+    # def validate_msisdn(cls, v: str) -> str: # pylint: disable=no-self-argument
+    #     """Validate that msisdn contains exactly 9 digits"""
+    #     if not re.match(r'^\d{9}$', v):
+    #         raise ValueError('msisdn must contain exactly 9 digits. Remove country code prefix if present.')
+    #     return v
 
-    @validator('subscriber')
-    def validate_subscriber_structure(cls, v): # pylint: disable=no-self-argument
-        """Validate the structure of the subscriber field
-         - Must contain identification_document with document_type and document_number
-         - document_type must be one of the allowed types
-        """
-        allowed_document_types = ["NIE", "CIF", "DNI", "PASSPORT"]
-    
-        # Check if identification_document exists
-        if 'identification_document' not in v:
-            raise ValueError('subscriber must contain identification_document')
-    
-        id_doc = v['identification_document']
-    
-        # Check if document_type exists
-        if 'document_type' not in id_doc:
-            raise ValueError('identification_document must contain document_type')
-    
-        # Validate document_type value
-        doc_type = id_doc['document_type']
-        if doc_type not in allowed_document_types:
-            raise ValueError(f'document_type must be one of: {", ".join(allowed_document_types)}')
-    
-        # Check if document_number exists
-        if 'document_number' not in id_doc:
-            raise ValueError('identification_document must contain document_number')
-    
+
+    @field_validator('donor_operator')
+    def validate_donor_operator(cls, v: str) -> str: # pylint: disable=no-self-argument
+        """Validate that donor_operator contains exactly 3 digits"""
+        if not re.match(r'^\d{3}$', v):
+            raise ValueError('donor_operator must contain exactly 3 digits')
+        return v
+
+    @field_validator('recipient_operator')
+    def validate_recipient_operator(cls, v: str) -> str: # pylint: disable=no-self-argument
+        """Validate that donor_operator contains exactly 3 digits"""
+        if not re.match(r'^\d{3}$', v):
+            raise ValueError('recipient_operator must contain exactly 3 digits')
         return v
 
     contract_number: str = Field(
@@ -186,8 +250,8 @@ class PortInRequest(BaseModel):
     msisdn: str = Field(
         ...,
         description="Phone number | WSDL: `<por:MSISDN>`",
-        examples=["34612345678"],
-        pattern="^34[0-9]{9}$"
+        examples=["612345678"],
+        pattern="^[0-9]{9}$"
     )
 
 class PortInResponse(BaseModel):
