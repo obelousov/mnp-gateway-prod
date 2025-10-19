@@ -1,5 +1,5 @@
 # tasks.py
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from celery_app import app
 import requests
 import os
@@ -7,7 +7,7 @@ import mysql.connector
 from mysql.connector import Error
 from dotenv import load_dotenv
 # from soap_utils import create_soap_payload, parse_soap_response, json_to_soap_request, json_from_db_to_soap, parse_soap_response_list, create_status_check_soap
-from services.soap_services import parse_soap_response_list, create_status_check_soap, json_from_db_to_soap_new, json_from_db_to_soap_cancel
+from services.soap_services import parse_soap_response_list, create_status_check_soap, json_from_db_to_soap_new, json_from_db_to_soap_cancel,json_from_db_to_soap_online
 # from time_utils import calculate_countdown
 from services.time_services import calculate_countdown
 from datetime import datetime, timedelta
@@ -18,6 +18,7 @@ from services.database_service import get_db_connection
 from config import settings
 from services.time_services import calculate_countdown_working_hours
 from services.logger import logger, payload_logger, log_payload
+from porting.spain_nc import initiate_session
 
 WSDL_SERVICE_SPAIN_MOCK = settings.WSDL_SERVICE_SPAIN_MOCK
 WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = settings.WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS
@@ -651,4 +652,125 @@ def submit_to_central_node_cancel(self, mnp_request_id):
     finally:
         if connection and connection.is_connected():
             cursor.close()
+            connection.close()
+
+@app.task(bind=True, max_retries=3, default_retry_delay=60)
+def submit_to_central_node_task(self, mnp_request_id: int) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
+    """
+    Celery Task: Submit a porting request to the Central Node.
+    Retries on network or transient failures.
+    """
+    connection = None
+    cursor = None
+
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        # Fetch current record
+        cursor.execute("SELECT * FROM portability_requests WHERE id = %s", (mnp_request_id,))
+        mnp_request = cursor.fetchone()
+        if not mnp_request:
+            logger.error("Request %s not found", mnp_request_id)
+            return False, "NOT_FOUND", f"Request {mnp_request_id} not found", None
+
+        status_nc_old = mnp_request.get('status_nc', 'NOT_FOUND')
+
+        # Build SOAP request
+        session_code = initiate_session()
+        soap_payload = json_from_db_to_soap_online(mnp_request, session_code)
+
+        response = requests.post(
+            settings.APIGEE_PORTABILITY_URL,
+            data=soap_payload,
+            headers=settings.get_soap_headers('CrearSolicitudIndividualAltaPortabilidadMovil'),
+            timeout=settings.APIGEE_API_QUERY_TIMEOUT
+        )
+        response.raise_for_status()
+
+        # Parse SOAP response
+        result = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+        response_code, description, reference_code = (result if result and len(result) == 3 else (None, None, None))
+
+        # Assign status based on response_code
+        if not response_code or not response_code.strip():
+            status_nc = "PENDING_NO_RESPONSE_CODE_RECEIVED"
+        else:
+            response_code_upper = response_code.strip().upper()
+            if response_code_upper == "ASOL":
+                status_nc = "PENDING_RESPONSE" # ASOL received, now waiting for confirmation or rejection
+            else:
+                status_nc = "PENDING_CONFIRMATION_ASOL"
+
+        # Detect if NC status actually changed
+        status_changed = (status_nc != status_nc_old)
+
+        # Update DB depending on change
+        if status_changed:
+            if status_nc == "PENDING_RESPONSE":
+                # Special handling for ASOL – reschedule next window
+                _, scheduled_at = calculate_countdown(with_jitter=True)
+                logger.info("Request %s status changed to PENDING_RESPONSE, rescheduling for %s", mnp_request_id, scheduled_at)
+
+                update_query = """
+                    UPDATE portability_requests 
+                    SET status_nc = %s, scheduled_at = %s, session_code_nc = %s,
+                        response_status = %s, reference_code = %s, description = %s, updated_at = NOW()
+                    WHERE id = %s
+                """
+                cursor.execute(update_query, (status_nc, scheduled_at, session_code, response_code, reference_code, description, mnp_request_id))
+            else:
+                # Normal status update
+                update_query = """
+                    UPDATE portability_requests 
+                    SET status_nc = %s, session_code_nc = %s,
+                        response_status = %s, reference_code = %s, description = %s, updated_at = NOW()
+                    WHERE id = %s
+                """
+                cursor.execute(update_query, (status_nc, session_code, response_code, reference_code, description, mnp_request_id))
+        else:
+            # Status unchanged – just refresh metadata
+            update_query = """
+                UPDATE portability_requests 
+                SET session_code_nc = %s, response_status = %s, reference_code = %s, description = %s, updated_at = NOW()
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (session_code, response_code, reference_code, description, mnp_request_id))
+
+        connection.commit()
+
+        success = response_code == "0000 00000"
+        return success, response_code, description, reference_code
+
+    except requests.exceptions.RequestException as exc:
+        current_retry = self.request.retries
+        error_description = str(exc)
+        logger.warning("RequestException on request %s (attempt %s/%s): %s", mnp_request_id, current_retry + 1, self.max_retries, error_description)
+
+        if connection is None:
+            connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        if current_retry < self.max_retries:
+            cursor.execute("""
+                UPDATE portability_requests 
+                SET status_nc = %s, retry_number = %s, error_description = %s, updated_at = NOW()
+                WHERE id = %s
+            """, ("REQUEST_FAILED", current_retry + 1, error_description, mnp_request_id))
+            connection.commit()
+            raise self.retry(exc=exc, countdown=60)
+        else:
+            logger.error("Max retries exceeded for request %s", mnp_request_id)
+            cursor.execute("""
+                UPDATE portability_requests 
+                SET status_nc = %s, retry_number = %s, error_description = %s, updated_at = NOW()
+                WHERE id = %s
+            """, ("MAX_RETRIES_EXCEEDED", current_retry + 1, error_description, mnp_request_id))
+            connection.commit()
+            return False, "MAX_RETRIES_EXCEEDED", error_description, None
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
             connection.close()
