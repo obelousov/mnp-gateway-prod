@@ -440,6 +440,59 @@ def parse_soap_response_list(soap_xml: str, requested_fields: List[str]) -> Tupl
     
     return tuple(result)
 
+def parse_soap_response_nested(soap_xml: str, requested_fields: List[str]) -> Tuple[Optional[str], ...]:
+    """
+    Parse SOAP response and return values as tuple for easy unpacking.
+    Supports nested fields using '/' syntax.
+    
+    Args:
+        soap_xml: SOAP response XML string.
+        requested_fields: List of field names or paths to extract.
+                         Use '/' for nested fields: 'campoErroneo/nombre'
+    
+    Returns:
+        Tuple with extracted field values in the same order as requested_fields.
+    """
+    result: List[Optional[str]] = []
+
+    try:
+        root = ET.fromstring(soap_xml)
+        
+        for field_path in requested_fields:
+            value = None
+            
+            if '/' in field_path:
+                # Handle nested fields: 'parent/child'
+                parts = field_path.split('/')
+                current_element = root
+                
+                # Navigate through the path
+                for part in parts:
+                    current_element = current_element.find(f'.//{{*}}{part}')
+                    if current_element is None:
+                        break
+                
+                value = current_element.text if current_element is not None else None
+            else:
+                # Handle simple fields (original behavior)
+                value = root.findtext(f'.//{{*}}{field_path}')
+            
+            # Handle empty strings and whitespace
+            if value is not None:
+                value = value.strip() if value.strip() else None
+                
+            result.append(value)
+
+    except Exception as e:
+        print(f"Error parsing SOAP XML: {e}")
+        result = [None] * len(requested_fields)
+
+    if len(result) != len(requested_fields):
+        result = [None] * len(requested_fields)
+
+    return tuple(result)
+
+
 def json_from_db_to_soap_cancel(json_data):
     """
     Convert JSON data from new table structure to SOAP request

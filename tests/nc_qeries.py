@@ -9,6 +9,7 @@ from xml.etree import ElementTree as ET
 import re
 
 from services.soap_services import parse_soap_response_list, create_status_check_soap_nc, create_initiate_soap, parse_soap_response_dict, parse_soap_response_dict_flat, json_from_db_to_soap_new, json_from_db_to_soap_new_1
+from services.soap_services import parse_soap_response_nested
 # from time_utils import calculate_countdown
 from services.time_services import calculate_countdown
 from datetime import datetime, timedelta
@@ -728,34 +729,134 @@ def parse_crear_solicitud_response(xml_string: str) -> dict[str, Any]:
 
     return data
 
+import xml.etree.ElementTree as ET
+from typing import List, Tuple, Optional
+import io
+
+import io
+import xml.etree.ElementTree as ET
+from typing import List, Tuple, Optional
+
+def parse_soap_response_list_updated(soap_xml: str, requested_fields: List[str]) -> Tuple[Optional[str], ...]:
+    """
+    Parse SOAP response with dynamic namespaces and return values as tuple for easy unpacking.
+
+    Args:
+        soap_xml: SOAP response XML string.
+        requested_fields: List of field names to extract from the XML.
+
+    Returns:
+        Tuple with extracted field values in the same order as requested_fields.
+        If a field is not found or XML parsing fails, its value will be None.
+    """
+    result: List[Optional[str]] = []
+
+    try:
+        # Parse XML tree directly
+        root = ET.fromstring(soap_xml)
+        
+        for field in requested_fields:
+            # Use namespace-agnostic search which works well with dynamic namespaces
+            value = root.findtext(f'.//{{*}}{field}')
+            
+            # Handle empty strings and whitespace-only values
+            if value is not None:
+                value = value.strip() if value.strip() else None
+                
+            result.append(value)
+
+    except ET.ParseError as e:
+        print(f"XML parsing error: {e}")
+        result = [None] * len(requested_fields)
+    except Exception as e:
+        print(f"Unexpected error parsing SOAP XML: {e}")
+        result = [None] * len(requested_fields)
+
+    # Guarantee the correct tuple length
+    if len(result) != len(requested_fields):
+        result = [None] * len(requested_fields)
+
+    return tuple(result)
+
+def parse_soap_response_nested_1(soap_xml: str, requested_fields: List[str]) -> Tuple[Optional[str], ...]:
+    """
+    Parse SOAP response and return values as tuple for easy unpacking.
+    Supports nested fields using '/' syntax.
+    
+    Args:
+        soap_xml: SOAP response XML string.
+        requested_fields: List of field names or paths to extract.
+                         Use '/' for nested fields: 'campoErroneo/nombre'
+    
+    Returns:
+        Tuple with extracted field values in the same order as requested_fields.
+    """
+    result: List[Optional[str]] = []
+
+    try:
+        root = ET.fromstring(soap_xml)
+        
+        for field_path in requested_fields:
+            value = None
+            
+            if '/' in field_path:
+                # Handle nested fields: 'parent/child'
+                parts = field_path.split('/')
+                current_element = root
+                
+                # Navigate through the path
+                for part in parts:
+                    current_element = current_element.find(f'.//{{*}}{part}')
+                    if current_element is None:
+                        break
+                
+                value = current_element.text if current_element is not None else None
+            else:
+                # Handle simple fields (original behavior)
+                value = root.findtext(f'.//{{*}}{field_path}')
+            
+            # Handle empty strings and whitespace
+            if value is not None:
+                value = value.strip() if value.strip() else None
+                
+            result.append(value)
+
+    except Exception as e:
+        print(f"Error parsing SOAP XML: {e}")
+        result = [None] * len(requested_fields)
+
+    if len(result) != len(requested_fields):
+        result = [None] * len(requested_fields)
+
+    return tuple(result)
 
 if __name__ == "__main__":
     mnp_request_id = 68
     # session_code = "ABC123SESSION"
     msisdn = "600100200"
-    session_code = initiate_session()
+    # session_code = initiate_session()
     # xml_data = check_status(mnp_request_id, session_code, msisdn)
-    submit_to_central_node_new(mnp_request_id, session_code)
+    # submit_to_central_node_new(mnp_request_id, session_code)
 
-    exit()
-    result = parse_check_status_resonse(xml_data)
+    # exit()
+    # result = parse_check_status_resonse(xml_data)
 
-    # Print the flat dictionary
-    from pprint import pprint
-    pprint(result)
+    # # Print the flat dictionary
+    # from pprint import pprint
+    # pprint(result)
 
-    print("\n--- Accessing individual values ---")
-    print("Código Respuesta:", result['codigoRespuesta'])
-    print("Descripción:", result['descripcion'])
+    # print("\n--- Accessing individual values ---")
+    # print("Código Respuesta:", result['codigoRespuesta'])
+    # print("Descripción:", result['descripcion'])
 
-    if 'codigoOperadorDonante' in result:
-        print("Operador Donante:", result['codigoOperadorDonante'])
-    if 'codigoOperadorReceptor' in result:
-        print("Operador Receptor:", result['codigoOperadorReceptor'])
-    if 'estado' in result:
-        print("Estado del proceso:", result['estado'])
-    if 'fechaConfirmacion' in result:
-        print("Fecha de confirmación:", result['fechaConfirmacion'])
+    # if 'codigoOperadorDonante' in result:
+    #     print("Operador Donante:", result['codigoOperadorDonante'])
+    # if 'codigoOperadorReceptor' in result:
+    #     print("Operador Receptor:", result['codigoOperadorReceptor'])
+    # if 'estado' in result:
+    #     print("Estado del proceso:", result['estado'])
+    # if 'fechaConfirmacion' in result:
+    #     print("Fecha de confirmación:", result['fechaConfirmacion'])
 
 
     # --- Success XML for Solicitar---
@@ -790,6 +891,31 @@ if __name__ == "__main__":
        </S:Body>
     </S:Envelope>"""
 
+    fields = ["codigoRespuesta", "descripcion","codigoReferencia","fechaVentanaCambio"]
+    response_code, description, reference_code, data_chnage  = parse_soap_response_nested(xml_success, fields)   
+    print("\n--- SUCCESS RESPONSE ---")
+    print(f"Response Code: {response_code}")
+    print(f"Description: {description}")
+    print(f"Reference Code: {reference_code}")
+    print(f"Fecha Ventana Cambio: {data_chnage}")
+
+    
+    # fields = ["codigoRespuesta", "descripcion","codigoReferencia","fechaVentanaCambio"]
+    fields = [
+    "codigoRespuesta",                    # Simple field
+    "descripcion",                        # Simple field  
+    "campoErroneo/nombre",               # Nested: gets 'codigoOperadorDonante'
+    "campoErroneo/descripcion"           # Nested: gets the error description
+]
+    response_code, description, reference_code, data_chnage  = parse_soap_response_nested(xml_error, fields)   
+    print("\n--- ERROR RESPONSE ---")
+    print(f"codigoRespuesta: {response_code}")
+    print(f"descripcion: {description}")
+    print(f"campoErroneo/nombre: {reference_code}")
+    print(f"campoErroneo/descripcion: {data_chnage}")
+
+    # print(result)  # ('ACCS PERME', 'No es posible invocar esta operación en horario inhábil')
+    exit()
     print("\n--- SUCCESS RESPONSE ---")
     result = parse_crear_solicitud_response(xml_success)
 
