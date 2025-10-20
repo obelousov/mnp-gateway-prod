@@ -154,17 +154,109 @@ class PersonalData(BaseModel):
         examples=["ES", "FR", "DE"]
     )
 
-class Subscriber(BaseModel):
-    """ Subscriber data | WSDL: `<por:abonado>`"""
-    identification_document: IdentificationDocument = Field(
+# class Subscriber(BaseModel):
+#     """ Subscriber data | WSDL: `<por:abonado>`"""
+#     identification_document: IdentificationDocument = Field(
+#         ...,
+#         description="Identification document data"
+#     )
+#     personal_data: PersonalData = Field(
+#         ...,
+#         description="Personal data | WSDL: `<por:datosPersonales>`"
+#     )
+
+class SubscriberType(str, Enum):
+    PERSON = "person"
+    COMPANY = "company"
+
+class CompanyData(BaseModel):
+    razon_social: str = Field(
         ...,
-        description="Identification document data"
-    )
-    personal_data: PersonalData = Field(
-        ...,
-        description="Personal data | WSDL: `<por:datosPersonales>`"
+        description="Company legal name (razón social)",
+        examples=["Empresa Ejemplo S.L."]
     )
 
+# class Subscriber(BaseModel):
+#     subscriber_type: SubscriberType = Field(
+#         ...,
+#         description="Type of subscriber: 'person' for individuals, 'company' for legal entities"
+#     )
+#     identification_document: IdentificationDocument
+#     personal_data: Optional[PersonalData] = None
+#     company_data: Optional[CompanyData] = None  # Add this for companies
+
+#     @validator('personal_data')
+#     def validate_personal_data(cls, v, values):
+#         if values.get('subscriber_type') == SubscriberType.PERSON and not v:
+#             raise ValueError("personal_data is required for person subscribers")
+#         return v
+
+#     # @validator('company_data')
+#     # def validate_company_data(cls, v, values):
+#     #     if values.get('subscriber_type') == SubscriberType.COMPANY and not v:
+#     #         raise ValueError("company_data is required for company subscribers")
+#     #     return v
+#     # @validator('company_data')
+#     # def validate_company_data(cls, v, values):
+#     #     if values.get('subscriber_type') == SubscriberType.COMPANY and not v:
+#     #         raise ValueError("company_data is required for company subscribers")
+#     #     return v
+
+#     @validator('company_data')
+#     def validate_company_data(cls, v, values):
+#         print("Validating company_data with values:", values)
+#         if 'subscriber_type' not in values:
+#             return v  # Let other validators handle the missing subscriber_type
+        
+#         subscriber_type = values['subscriber_type']
+#         if subscriber_type == SubscriberType.COMPANY and not v:
+#             raise ValueError("company_data is required for company subscribers")
+#         return v
+
+class Subscriber(BaseModel):
+    subscriber_type: SubscriberType = Field(
+        ...,
+        description="Type of subscriber: 'person' for individuals, 'company' for legal entities"
+    )
+    identification_document: IdentificationDocument
+    personal_data: Optional[PersonalData] = None
+    company_data: Optional[CompanyData] = None
+
+    @validator('identification_document')
+    def validate_document_matches_subscriber_type(cls, v, values):
+        """Validate that document type matches subscriber type"""
+        if 'subscriber_type' not in values:
+            return v
+            
+        subscriber_type = values['subscriber_type']
+        doc_type = v.document_type
+        
+        if subscriber_type == SubscriberType.COMPANY and doc_type not in ['CIF', 'NIF']:
+            raise ValueError(f"Companies must use CIF or NIF document types, got: {doc_type}")
+            
+        if subscriber_type == SubscriberType.PERSON and doc_type not in ['NIE', 'PAS']:
+            raise ValueError(f"Individuals must use NIE or PAS document types, got: {doc_type}")
+            
+        return v
+
+    @validator('personal_data')
+    def validate_personal_data(cls, v, values):
+        if 'subscriber_type' not in values:
+            return v
+            
+        if values['subscriber_type'] == SubscriberType.PERSON and not v:
+            raise ValueError("personal_data is required for person subscribers")
+        return v
+
+    @validator('company_data')
+    def validate_company_data(cls, v, values):
+        if 'subscriber_type' not in values:
+            return v
+            
+        if values['subscriber_type'] == SubscriberType.COMPANY and not v:
+            raise ValueError("company_data is required for company subscribers")
+        return v
+    
 class PortInRequest(BaseModel):
     """
     Pydantic class to validate Port-In request payload SOAP method: `SolicitarAltaPortabilidadMovil`
@@ -188,6 +280,19 @@ class PortInRequest(BaseModel):
             raise ValueError(f'country_code must be one of: {", ".join(allowed_country_codes)}')
         
         return v
+    # @validator('company_type')
+    # def validate_company_type(cls, v):  # pylint: disable=no-self-argument
+    #     """Validate company_type
+    #     - Must be person or company
+    #     """
+    #     allowed_company_types = ["person", "company"]
+  
+    #     # Validate the country_code value (v is the actual value, not a dict)
+    #     if v not in allowed_company_types:
+    #         raise ValueError(f'company_type must be one of: {", ".join(allowed_company_types)}')
+        
+    #     return v
+
     session_code: str = Field(
         ...,
         description="Unique session identifier | WSDL: `<v1:codigoSesion>`",
@@ -447,6 +552,7 @@ async def portin_request(alta_data: PortInRequest):
     """
     try:
         logger.info("Processing port-in request")
+        logger.info("subscriber_type: %s", alta_data.subscriber.subscriber_type.value)
     
         # Convert Pydantic model to dict for existing functions
         alta_data_dict = alta_data.dict()
