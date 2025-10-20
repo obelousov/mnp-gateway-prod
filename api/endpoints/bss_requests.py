@@ -76,27 +76,60 @@ async def query_msisdn_details():
         "version": settings.API_VERSION, 
         "timestamp": time.time()
     }
-
 class IdentificationDocument(BaseModel):
     """ Identification document data | WSDL: `<por:documentoIdentificacion>`"""
-    document_type: str = Field(
-        ...,
-        description="Document type | WSDL: `<por:tipoDocumento>`",
-        examples=["NIE", "DNI", "PASSPORT"]
-    )
-    document_number: str = Field(
-        ...,
-        description="Document number | WSDL: `<por:numeroDocumento>`",
-        examples=["Y30307876", "12345678X"]
-    )
+    document_type: str = Field(..., description="Type of identification document (NIE, NIF, etc.)")
+    document_number: str = Field(..., description="Document number")
 
-    @field_validator('document_type')
+    @validator('document_type')
     def validate_document_type(cls, v): # pylint: disable=no-self-argument
         """Validate that document_type is one of the allowed types"""
-        allowed_document_types = ["NIE", "CIF", "DNI", "PASSPORT"]
-        if v not in allowed_document_types:
-            raise ValueError(f'document_type must be one of: {", ".join(allowed_document_types)}')
+        valid_types = ["NIF", "CIF", "NIE", "PAS"]  # Add other types you support
+        if v not in valid_types:
+            raise ValueError(f"Document type must be one of: {', '.join(valid_types)}")
         return v
+
+    @validator('document_number')
+    def validate_document_number(cls, v, values): # pylint: disable=no-self-argument
+        """Validate document_number format based on document_type"""
+        if 'document_type' not in values:
+            return v
+            
+        doc_type = values['document_type']
+        v_clean = v.upper().replace(' ', '').replace('-', '')  # Clean input
+
+        validation_patterns = {
+            "NIE": (r'^[XYZ]{1}[0-9]{7}[A-Z]{1}$', "NIE must be format: [X/Y/Z] + 7 digits + 1 letter (e.g., X1234567A)"),
+            "NIF": (r'^[0-9]{8}[A-Z]{1}$', "NIF must be 8 digits + 1 letter (e.g., 12345678Z)"),
+            # Add more patterns as needed
+        }
+
+        if doc_type in validation_patterns:
+            pattern, error_msg = validation_patterns[doc_type]
+            if not re.match(pattern, v_clean):
+                raise ValueError(f"{error_msg}. Got: {v}")
+            
+        return v_clean
+# class IdentificationDocument(BaseModel):
+#     """ Identification document data | WSDL: `<por:documentoIdentificacion>`"""
+#     document_type: str = Field(
+#         ...,
+#         description="Document type | WSDL: `<por:tipoDocumento>`",
+#         examples=["NIE", "DNI", "PASSPORT"]
+#     )
+#     document_number: str = Field(
+#         ...,
+#         description="Document number | WSDL: `<por:numeroDocumento>`",
+#         examples=["Y30307876", "12345678X"]
+#     )
+
+    # @field_validator('document_type')
+    # def validate_document_type(cls, v): # pylint: disable=no-self-argument
+    #     """Validate that document_type is one of the allowed types"""
+    #     allowed_document_types = ["NIF", "CIF", "NIE", "PAS"]
+    #     if v not in allowed_document_types:
+    #         raise ValueError(f'document_type must be one of: {", ".join(allowed_document_types)}')
+    #     return v
     
 class PersonalData(BaseModel):
     """ Personal data | WSDL: `<por:datosPersonales>`"""
@@ -229,18 +262,91 @@ class PortInRequest(BaseModel):
     contract_number: str = Field(
         ...,
         description="Contract reference | WSDL: `<por:codigoContrato>`",
-        examples=["CONTRACT_12345", "CTR_67890", "CNTR_2024_001"]
+        examples=["CONTRACT_12"]
     )
+    @validator('contract_number')
+    def validate_contract_number(cls, v, values):
+        if not v:
+            raise ValueError("Contract number is required")
+        
+        contract_clean = v.strip()
+        
+        # Must be exactly 11 characters
+        if len(contract_clean) != 11:
+            raise ValueError(
+                f"Contract number must be exactly 11 characters long. "
+                f"Got: '{v}' (length: {len(contract_clean)})"
+            )
+        
+        # Check if starts with recipient operator code (if available)
+        if 'recipient_operator' in values and values['recipient_operator']:
+            operator_code = values['recipient_operator']
+            if not contract_clean.startswith(operator_code):
+                raise ValueError(
+                    f"Contract number must start with recipient operator code '{operator_code}'. "
+                    f"Got: '{v}'"
+                )
+        
+        return contract_clean
     routing_number: str = Field(
         ...,
         description="Routing identifier | WSDL: `<por:NRNReceptor>`",
         examples=["NRN_RECEPTOR_001", "RN_2024001", "ROUTE_ABC123"]
     )
-    desired_porting_date: Optional[date] = Field(
+    @validator('routing_number')
+    def validate_routing_number(cls, v):
+        if not v:
+            raise ValueError("Routing number (NRN) is required")
+        
+        routing_clean = v.strip()
+        
+        # Must be exactly 6 characters
+        if len(routing_clean) != 6:
+            raise ValueError(
+                f"Routing number (NRN) must be exactly 6 characters long. "
+                f"Got: '{v}' (length: {len(routing_clean)})"
+            )
+        
+        return routing_clean
+    # desired_porting_date: Optional[date] = Field(
+    #     None,
+    #     description="Desired porting date (optional) | WSDL: `{fecha_ventana_optional}`",
+    #     examples=["2025-10-20"]
+    # )
+    desired_porting_date: Optional[Union[datetime, str]] = Field(
         None,
-        description="Desired porting date (optional) | WSDL: `{fecha_ventana_optional}`",
-        examples=["2025-10-20"]
+        description="Desired porting date in DD/MM/YYYY HH:MM:SS format | WSDL: `{fecha_ventana_optional}`",
+        examples=["20/10/2025 02:00:00"]
     )
+
+    @validator('desired_porting_date')
+    def validate_and_format_datetime(cls, v):
+        if v is None:
+            return None
+            
+        if isinstance(v, datetime):
+            # Convert datetime object to required string format
+            return v.strftime('%d/%m/%Y %H:%M:%S')
+        elif isinstance(v, str):
+            # Try to parse various formats and convert to required format
+            formats_to_try = [
+                '%d/%m/%Y %H:%M:%S',  # Exact required format
+                '%Y-%m-%d %H:%M:%S',  # ISO with time
+                '%d/%m/%Y',           # Date only with slashes
+                '%Y-%m-%d',           # ISO date only
+            ]
+            
+            for fmt in formats_to_try:
+                try:
+                    parsed_dt = datetime.strptime(v, fmt)
+                    return parsed_dt.strftime('%d/%m/%Y %H:%M:%S')
+                except ValueError:
+                    continue
+                    
+            raise ValueError('Date must be in DD/MM/YYYY HH:MM:SS format (e.g., "20/10/2025 02:00:00")')
+        
+        raise ValueError('Invalid date format')
+
     iccid: Optional[str] = Field(
         None,
         description="SIM card identifier (optional) | WSDL: `{iccid_optional}`",
@@ -248,6 +354,35 @@ class PortInRequest(BaseModel):
         min_length=20,
         max_length=20
     )
+    @validator('iccid')
+    def validate_iccid(cls, v):
+        if not v:
+            raise ValueError("ICCID is required")
+        
+        iccid_clean = v.strip()
+        iccid_digits = re.sub(r'[^0-9]', '', iccid_clean)
+        
+        # If 20 digits, trim to 19 (remove last check digit)
+        if len(iccid_digits) == 20:
+            iccid_digits = iccid_digits[:19]
+        
+        # Ensure exactly 19 digits starting with 89
+        if not re.match(r'^89[0-9]{17}$', iccid_digits):
+            raise ValueError(
+                f"ICCID must be exactly 19 digits starting with 89. "
+                f"Got: {v} (length: {len(iccid_digits)})"
+            )
+        
+        # Extract and validate Spain MCC (digits 3-5 should be 214 for Spain)
+        mcc = iccid_digits[2:5]  # Positions 3,4,5 (0-indexed)
+        if mcc != "214":
+            raise ValueError(
+                f"ICCID must have Spain MCC 214. "
+                f"Found MCC: {mcc} in ICCID: {iccid_digits}"
+            )
+        
+        return iccid_digits
+
     msisdn: str = Field(
         ...,
         description="Phone number | WSDL: `<por:MSISDN>`",
@@ -355,6 +490,11 @@ async def portin_request(alta_data: PortInRequest):
                     detail=response_data
                 )
             elif response_code == "ACCS PERME":  # Outside business hours
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=response_data
+                )
+            elif re.match(r"^AREC", (response_code or "")):  # All AREC errors
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail=response_data

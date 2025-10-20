@@ -181,8 +181,8 @@ def json_from_db_to_soap_new(json_data):
         request_date=format_date(json_data.get('requested_at')),  # Changed from 'request_date'
         donor_operator=json_data.get('donor_operator', ''),
         recipient_operator=json_data.get('recipient_operator', ''),
-        id_type=json_data.get('document_type', 'NIE'),  # Changed from 'id_type'
-        id_number=json_data.get('document_number', ''),  # Changed from 'id_number'
+        document_type=json_data.get('document_type', 'NIE'),  # Changed from 'id_type'
+        document_number=json_data.get('document_number', ''),  # Changed from 'id_number'
         contract_code=json_data.get('contract_number', ''),  # Changed from 'contract_code'
         nrn_receptor=json_data.get('routing_number', ''),  # Changed from 'nrn_receptor'
         fecha_ventana_optional=fecha_ventana_optional,

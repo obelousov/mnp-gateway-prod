@@ -135,13 +135,13 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         if response_code == "0000 00000":  # Adjust this condition based on your actual success codes
             status_nc = 'SUBMITTED'
             status_bss = 'PROCESSING'
-            logger.info("Success response from NC id %s response_code %s", mnp_request_id, response_code)
+            logger.info("Success response from NC id %s response_code %s, description %s", mnp_request_id, response_code, description)
             success = True
         else:
             status_nc = 'ERROR RESPONSE'
-            status_bss = 'REJECT_FROM_NC_SUBMITTED'
+            status_bss = 'REJECT_FROM_NC_SUBMITTED_TO_BSS'
             success = False
-            logger.error("Error response from NC id %s response_code %s", mnp_request_id, response_code)
+            logger.error("Error response from NC id %s response_code %s description %s", mnp_request_id, response_code, description)
 
         # 6. Update database with response
         update_query = """
