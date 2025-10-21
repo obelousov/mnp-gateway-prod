@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from config import settings
 import time
-from services.database_service import save_portin_request_db, save_cancel_request_db, save_portability_request_new, check_if_cancel_request_id_in_db
+from services.database_service import save_portin_request_db, save_cancel_request_db, save_portability_request_new, check_if_cancel_request_id_in_db, check_if_cancel_request_id_in_db_online, save_cancel_request_db_online
 from tasks.tasks import submit_to_central_node, submit_to_central_node_cancel
 from services.logger import logger, payload_logger, log_payload
 from pydantic import BaseModel, Field, validator, field_validator
@@ -13,7 +13,7 @@ import pytz
 from enum import Enum
 from services.auth import verify_basic_auth
 from fastapi.openapi.docs import get_swagger_ui_html
-from porting.spain_nc import submit_to_central_node_online
+from porting.spain_nc import submit_to_central_node_online, submit_to_central_node_cancel_online, submit_to_central_node_cancel_online_sync 
 
 router = APIRouter()
 
@@ -831,6 +831,263 @@ async def cancel_portability(request: CancelPortabilityRequest):
     except Exception as e:
         logger.error("Failed to process cancellation request for MSISDN %s: %s", 
                     request.msisdn, str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process cancellation request: {str(e)}"
+        ) from e
+    
+
+class CancellationReason_online(str, Enum):
+    """Allowed cancellation reasons |  WSDL <por:causaEstado"""
+    SUBSCRIBER_REQUEST = "CANC_ABONA"
+    OPERATOR_ERROR = "CANC_ERROR"
+    TECHNICAL_ISSUE = "CANC_TECNI"
+    # OTHER = "OTHER"
+
+class CancelPortabilityRequest_online(BaseModel):
+    """
+    Model for portability cancellation request validation | SOAP method: `CancelarSolicitudAltaPortabilidadMovil`
+    WSDL Reference: 'por:peticionConsultarProcesosPortabilidadMovil'
+    """
+    # cancel_request_id: int = Field(
+    #     ...,
+    #     description="ID returned by MNP GW on initial portin request",
+    #     examples=["12"]
+    #     # min_length=5
+    # )
+    reference_code: str = Field(
+        ...,
+        description="Portability request reference code returned by NC| WSDL: `por:codigoReferencia`",
+        examples=["PORT_IN_12345", "REF_2024_001"],
+        min_length=23,
+        max_length=23,
+    )
+    # msisdn: str = Field(
+    #     ...,
+    #     description="Mobile Station International Subscriber Directory Number (phone number) | WSDL: `<por:MSISDN>`",
+    #     examples=["34600000001", "34600000002"],
+    #     pattern="^34[0-9]{9}$"
+    # )
+    cancellation_reason: CancellationReason_online = Field(
+        ...,
+        description="Reason for cancelling the portability request | WSDL: `<por:causaEstado>`",
+        examples=["CANC_ABONA", "CANC_TECNI", "CANC_ERROR"]
+    )
+    cancellation_initiated_by_donor: bool = Field(
+        ...,
+        description="Boolean indicando si la cancelacion fue iniciada por donante o por receptor | WSDL: `<por:cancelacionIniciadaPorDonante>`",
+        examples=[True, False]
+    )
+    # session_code: Optional[str] = Field(
+    #     None,
+    #     description="Session identifier for tracking | WSDL: `<v1:codigoSesion>`",
+    #     examples=["SESSION_001", "13"]
+    # )
+
+class CampoErroneo(BaseModel):
+    """Erroneous field details | WSDL: `co-v1-10:CampoErroneo`"""
+    nombre: str = Field(
+        ...,
+        max_length=32,
+        description="Nombre del campo erróneo | WSDL: `co-v1-10:nombre`",
+        examples=["codigoOperadorDonante", "documentNumber", "iccid"]
+    )
+    descripcion: str = Field(
+        ...,
+        max_length=512,
+        description="Descripción del error | WSDL: `co-v1-10:descripcion`",
+        examples=[
+            "Campo con restricción de longitud fija de 3 caracteres, se recibieron 10 caracteres",
+            "Formato de fecha inválido, debe ser DD/MM/YYYY HH:MM:SS"
+        ]
+    )
+
+class CancelPortabilityResponse_online(BaseModel):
+    """ Cancellation response model | SOAP method: `CancelarSolicitudAltaPortabilidadMovilResponse`  
+        WSDL Reference: 'por:respuestaCancelarSolicitudAltaPortabilidadMovil'
+    """
+    # message: str = Field(..., examples=["Cancellation request accepted and queued for processing"])
+    # request_id: int = Field(..., examples=[12345], description="Internal cancellation request ID")
+    # reference_code: str = Field(..., examples=["PORT_IN_12345"], description="Original reference code")
+    # msisdn: str = Field(..., examples=["34600000001"], description="Phone number being cancelled")
+    # session_code: Optional[str] = Field(None, examples=["SESSION_001"], description="Session code if provided")
+    # status: str = Field(..., examples=["PROCESSING"], description="Current request status")
+    response_code: str = Field(
+        ...,
+        max_length=10,
+        examples=["0000 00000", "ACCS PERME", "AREC HORFV"],
+        description="Código de respuesta. 10 caracteres máximo"
+    )
+    description: str = Field(
+        ...,
+        max_length=512,
+        examples=["some description"],
+        description="Descripcion de la respuesta. 512 caracteres máximo"
+    )
+
+    campo_erroneo: Optional[CampoErroneo] = Field(
+        None,
+        description="Detalles del campo erróneo si la cancelación falló | WSDL: `co-v1-10:CampoErroneo`",
+        examples=[{
+            "nombre": "codigoOperadorDonante",
+            "descripcion": "Campo con restricción de longitud fija de 3 caracteres"
+        }]
+    )
+# class CampoErroneo(BaseModel):
+#     """Erroneous field details | WSDL: `co-v1-10:CampoErroneo`"""
+#     nombre: str = Field(
+#         ...,
+#         max_length=32,
+#         description="Nombre del campo erróneo | WSDL: `co-v1-10:nombre`",
+#         examples=["codigoOperadorDonante", "documentNumber", "iccid"]
+#     )
+#     descripcion: str = Field(
+#         ...,
+#         max_length=512,
+#         description="Descripción del error | WSDL: `co-v1-10:descripcion`",
+#         examples=[
+#             "Campo con restricción de longitud fija de 3 caracteres, se recibieron 10 caracteres",
+#             "Formato de fecha inválido, debe ser DD/MM/YYYY HH:MM:SS"
+#         ]
+#     )
+    
+@router.post(
+    '/cancel_online', 
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(verify_basic_auth)],
+    response_model=CancelPortabilityResponse_online,
+    summary="Submit Portability Cancellation Request",
+    description="""
+    Cancel an existing number portability request.
+    
+    This endpoint:
+    - Accepts cancellation requests from BSS. 
+    - Immediately saves the cancellation to database
+    - Queues online for Central Node processing
+    - Returns received response from NC
+    
+    **Workflow:**
+    1. Request validation and immediate database storage
+    
+    **Note:** Only pending portability requests can be cancelled.
+    """,
+    response_description="Cancellation request accepted and queued for processing",
+    tags=["Spain: Portability Operations"],
+    responses={
+        202: {
+            "description": "Cancellation request accepted successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "Cancellation request accepted and queued for processing",
+                        "request_id": 12345,
+                        "reference_code": "PORT_IN_12345",
+                        "msisdn": "34600000001",
+                        "session_code": "SESSION_001",
+                        "status": "PROCESSING"
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Invalid request data",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "reference_code is required"
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Original portability request not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Portability request PORT_IN_99999 not found"
+                    }
+                }
+            }
+        },
+        500: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Failed to process cancellation request: Database connection error"
+                    }
+                }
+            }
+        }
+    }
+)
+async def cancel_portability_online(request: CancelPortabilityRequest_online):
+    """
+    Cancel Portability Request Endpoint
+    
+    Processes cancellation requests for existing number portability operations.
+    
+    **Validation:**
+    - Validates reference_code exists in system
+    - Ensures original request is in cancellable state
+    - Validates MSISDN format (Spanish numbering plan)
+    - Validates cancellation reason format
+    
+    **Business Rules:**
+    - Only pending portability requests can be cancelled
+    - Donor-initiated cancellations have different workflows
+    - Session code is preserved for audit tracking
+    
+    **Example Request:**
+    ```json
+    {
+        "reference_code": "PORT_IN_12345",
+        "msisdn": "34600000001",
+        "cancellation_reason": "SUBSCRIBER_REQUEST",
+        "cancellation_initiated_by_donor": false,
+        "session_code": "SESSION_001"
+    }
+    ```
+    """
+    # Validate request exists FIRST (outside try-except)
+    logger.debug("Checking existence of portability request for cancellation: %s", request.reference_code)
+    request_data = {"reference_code": request.reference_code}
+    if not check_if_cancel_request_id_in_db_online(request_data):
+        logger.warning("Portability reference code %s not found for cancellation", request.reference_code)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Portability request {request.reference_code} not found"
+        )
+    
+    try:
+        logger.info("Processing cancellation request for reference: %s",
+                   request.reference_code)
+        
+        # Convert Pydantic model to dict for existing functions
+        alta_data = request.dict()
+        # Convert enum to its string value
+        if 'cancellation_reason' in alta_data and alta_data['cancellation_reason']:
+            alta_data['cancellation_reason'] = alta_data['cancellation_reason'].value
+
+        # 1. Log the incoming payload
+        log_payload('BSS', 'CANCEL_PORTABILITY', 'REQUEST', str(alta_data))
+        
+        # 2. Save to database immediately
+        request_id = save_cancel_request_db_online(alta_data, "CANCELLATION", "ESP")
+
+        # 3. Submit to NC and get response
+        success, response_code, description = submit_to_central_node_cancel_online_sync(request_id)
+
+        # 4. Return the NC response
+        return CancelPortabilityResponse_online(
+            response_code=response_code or "UNKNOWN",
+            description=description or "No response from NC",
+            campo_erroneo=None
+        )
+        
+    except Exception as e:
+        logger.error("Failed to process cancellation request for reference %s: %s", 
+                    request.reference_code, str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process cancellation request: {str(e)}"

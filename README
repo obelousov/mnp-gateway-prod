@@ -19,6 +19,10 @@ http://localhost:8080/dashboard/#/http/routers
 
 swagger docs
 https://mnp-api.olbe.tech/docs
+https://mnp-api.olbe.tech/redoc
+
+planUML
+http://localhost:9090
 
 curl -k -u "apiuser:api@password" https://mnp-api.olbe.tech/api/v1/healthcheck
 

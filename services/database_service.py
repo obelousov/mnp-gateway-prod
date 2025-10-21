@@ -186,6 +186,72 @@ def save_cancel_request_db(request_data: dict, request_type: str = 'CANCEL', cou
         if connection:
             connection.close()
 
+def save_cancel_request_db_online(request_data: dict, request_type: str = 'CANCEL', country_code: str = "ESP") -> int:
+    """
+    Save cancellation request to database (synchronous)
+    """
+    logger.debug("ENTER save_cancel_request_db_online() %s", request_data)
+    required_fields = ["reference_code", "cancellation_reason", "cancellation_initiated_by_donor"]
+    for field in required_fields:
+        if field not in request_data:
+            raise ValueError(f"Missing required field: {field}")
+    
+    connection = None
+    cursor = None
+    try:
+        # Calculate scheduled_at time
+        initial_delta = timedelta(seconds=-5)
+        _, _, scheduled_at = calculate_countdown_working_hours(
+            delta=initial_delta, 
+            with_jitter=False
+        )
+        status_bss = "PROCESSING"
+        status_nc = "PENDING_SUBMIT"
+
+        # Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # FIXED: Removed one NOW() from VALUES - 11 placeholders for 11 values
+        insert_query = """
+        INSERT INTO portability_requests 
+        (reference_code, request_type, cancellation_reason, cancellation_initiated_by_donor, 
+        scheduled_at, status_nc, status_bss, country_code, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+        RETURNING id
+        """
+
+        values = (
+            request_data["reference_code"],
+            request_type,
+            request_data["cancellation_reason"],
+            request_data["cancellation_initiated_by_donor"],
+            # request_data.get("session_code"),
+            scheduled_at,
+            status_nc,
+            status_bss,
+            country_code
+        )
+        
+        # Execute and commit
+        cursor.execute(insert_query, values)
+        request_id = cursor.fetchone()[0]  # Get the returned ID
+        connection.commit()
+        
+        logger.info("Saved cancellation request with ID: %s, scheduled at: %s", request_id, scheduled_at)
+        return request_id
+        
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        logger.error("Failed to save cancellation request: %s", e)
+        raise
+    finally:
+        # Always close cursor and connection
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
 
 # def check_if_cancel_request_id is presnt id db:
 def check_if_cancel_request_id_in_db(request_data: dict) -> bool:
@@ -233,7 +299,65 @@ def check_if_cancel_request_id_in_db(request_data: dict) -> bool:
             cursor.close()
         if connection and connection.is_connected():
             connection.close()
-                        
+
+# def check_if_cancel_request_id is presnt id db:
+def check_if_cancel_request_id_in_db_online(request_data: dict) -> bool:
+    """
+    Check if cancel_request_id present in database (synchronous)
+    Returns True if found, False if not found
+    """
+    logger.debug("ENTER check_if_cancel_request_id_in_db_online() %s", request_data)
+    
+    # Enhanced validation with better error messages
+    if not request_data:
+        raise ValueError("Request data is empty or None")
+    
+    required_fields = ["reference_code"]
+    missing_fields = [field for field in required_fields if field not in request_data or not request_data[field]]
+    
+    if missing_fields:
+        raise ValueError(f"Missing required field(s): {', '.join(missing_fields)}. Received data: {request_data}")
+    
+    connection = None
+    cursor = None
+    try:
+        # Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        reference_code = request_data["reference_code"]
+        
+        # Validate reference_code is not empty
+        if not reference_code or not reference_code.strip():
+            logger.error("Reference code is empty or whitespace")
+            return False
+        
+        # Query to check if the ID exists in portability_requests table
+        query = """
+            SELECT COUNT(*) as count 
+            FROM portability_requests 
+            WHERE reference_code = %s
+        """
+        logger.debug("Executing query to check reference_code: %s", query)
+        cursor.execute(query, (reference_code.strip(),))
+        result = cursor.fetchone()
+        
+        # Access tuple by index (COUNT(*) is first column)
+        exists = result[0] > 0 if result else False
+        
+        logger.debug("Reference code '%s' exists in DB: %s", reference_code, exists)
+        return exists
+        
+    except Exception as e:
+        logger.error("Error checking reference_code '%s' in DB: %s", 
+                    request_data.get("reference_code"), str(e))
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
 def save_portability_request_new(alta_data: dict, request_type: str = 'PORT_IN', country_code: str = "ESP") -> int:
     """
     Save portability request to optimized table structure
