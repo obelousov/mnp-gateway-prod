@@ -7,7 +7,7 @@ import mysql.connector
 from mysql.connector import Error
 from dotenv import load_dotenv
 # from soap_utils import create_soap_payload, parse_soap_response, json_to_soap_request, json_from_db_to_soap, parse_soap_response_list, create_status_check_soap
-from services.soap_services import parse_soap_response_list, create_status_check_soap, json_from_db_to_soap_new, json_from_db_to_soap_cancel,json_from_db_to_soap_online
+from services.soap_services import parse_soap_response_list, create_status_check_soap, json_from_db_to_soap_new, json_from_db_to_soap_cancel,json_from_db_to_soap_online, create_status_check_soap_nc, parse_soap_response_nested, parse_soap_response_nested_multi
 # from time_utils import calculate_countdown
 from services.time_services import calculate_countdown
 from datetime import datetime, timedelta
@@ -190,7 +190,7 @@ def submit_to_central_node(self, mnp_request_id):
             connection.close()
 
 @app.task(bind=True, max_retries=3)
-def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
+def check_status_01(self, mnp_request_id, session_code, msisdn,reference_code):
     """
     Task to check the status of a single MSISDN at the Central Node.
     """
@@ -225,17 +225,19 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
                                                         delta=settings.TIME_DELTA_FOR_STATUS_CHECK, 
                                                         with_jitter=True
                                                                                     )
+            scheduled_datetime_mysql = scheduled_datetime.strftime('%Y-%m-%d %H:%M:%S')
             # Update database with the actual scheduled time
             update_query = """
                 UPDATE portability_requests 
                 SET response_status = %s,
-                SET scheduled_at = %s,
-                updated_at = NOW() 
+                    scheduled_at = %s,    # ✅ Single SET clause with comma separation
+                    updated_at = NOW() 
                 WHERE id = %s
             """
-            cursor.execute(update_query, (response_code,scheduled_datetime, mnp_request_id))
+            cursor.execute(update_query, (response_code,scheduled_datetime_mysql, mnp_request_id))
             connection.commit()
-            return "Scheduled next check for id: %s at %s", mnp_request_id, scheduled_datetime
+            # return "Scheduled next check for id: %s at %s", mnp_request_id, scheduled_datetime
+            return f"Scheduled next check for id: {mnp_request_id} at {scheduled_datetime}"
 
         if response_code in ('ACON', 'APOR', 'AREC','ACAN'):
             if response_code == 'ACON':
@@ -265,6 +267,137 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
             # response_status, description=None, error_fields=None, porting_window_date=None):
             
             return "Final status received for id: %s, status: %s", mnp_request_id, response_code
+            
+            # callback_bss.delay(mnp_request_id)
+
+    except requests.exceptions.RequestException as exc:
+        print(f"Status check failed, retrying: {exc}")
+        self.retry(exc=exc, countdown=120)
+    except Error as e:
+        print(f"Database error during status check: {e}")
+        self.retry(exc=e, countdown=30)
+    finally:
+        if connection and connection.is_connected():
+            cursor.close()
+            connection.close()
+
+@app.task(bind=True, max_retries=3)
+def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
+    """
+    Task to check the status of a single MSISDN at the Central Node.
+    """
+    connection = None
+    APIGEE_PORTABILITY_URL = settings.APIGEE_PORTABILITY_URL
+    logger.info("ENTER check status() with req_id %s ref_code %s msisdn %s", mnp_request_id, reference_code,msisdn)
+    session_code = initiate_session()
+    if not session_code:
+        logger.error("Failed to initiate session for request %s", mnp_request_id)
+        return False, "SESSION_ERROR", "Failed to initiate session"
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        consultar_payload = create_status_check_soap_nc(mnp_request_id, session_code, msisdn)  # Check status request SOAP
+        # Conditional payload logging
+        log_payload('NC', 'CHECK_STATUS', 'REQUEST', str(consultar_payload))
+
+        # if not WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS:
+        #     raise ValueError("WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS environment variable is not set.")
+        
+        # response = requests.post(WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS, 
+        #                        data=consultar_payload,
+        #                        headers=settings.get_soap_headers('IniciarSesion'),
+        #                        timeout=settings.APIGEE_API_QUERY_TIMEOUT)
+        # response.raise_for_status()
+        if not APIGEE_PORTABILITY_URL:
+            raise ValueError("APIGEE_PORTABILITY_URL environment variable is not set.")
+        
+        response = requests.post(APIGEE_PORTABILITY_URL,
+                               data=consultar_payload,
+                               headers=settings.get_soap_headers('ConsultarProcesosPortabilidadMovil'),
+                               timeout=settings.APIGEE_API_QUERY_TIMEOUT)
+        response.raise_for_status()
+        # new_status = parse_soap_response(response.text)  # Parse the response
+        # response_code, description, _, session_code = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia","estado"])
+
+        # fields = ["codigoRespuesta", "descripcion","codigoReferencia","estado"]
+        # response_code, description, reference_code, estado  = parse_soap_response_nested_multi(response.text, fields) 
+
+        fields = ["tipoProceso", "codigoRespuesta", "descripcion", "codigoReferencia", "estado","fechaVentanaCambio","fechaCreacion"]
+        result = parse_soap_response_nested_multi(response.text, fields, reference_code)
+
+        # Ensure result is an iterable (the parser may return None) to avoid typing/None issues
+        if result is None:
+            result = [None] * len(fields)
+
+        # Create a dictionary using dict comprehension
+        result_dict = {field: value for field, value in zip(fields, result)}
+
+        # Access by field name safely
+        estado = result_dict.get("estado")
+        reference_code = result_dict.get("codigoReferencia")
+        description = result_dict.get("descripcion")
+        response_code = result_dict.get("codigoRespuesta")
+
+         
+        # print(f"Received check response: response_code={response_code}, description={description}, session_code={session_code}, status=estado")
+        logger.debug("Received check response: response_code=%s, description=%s, reference_code=%s, status=%s", 
+             response_code, description, reference_code, estado)
+        
+        print("Received check response: response_code=%s, description=%s, reference_code=%s, status=%s", 
+             response_code, description, reference_code, estado)
+
+        log_payload('NC', 'CHECK_STATUS', 'RESPONSE', str(response.text))
+
+        # If it's still pending, queue the next check during working hours
+        if estado == 'ASOL':
+            # Still same status, updated scheduled_at for next check - within same timenad
+            _, _, scheduled_datetime = calculate_countdown_working_hours(
+                                                        delta=settings.TIME_DELTA_FOR_STATUS_CHECK, 
+                                                        with_jitter=True
+                                                                                    )
+            # Update database with the actual scheduled time
+            update_query = """
+                UPDATE portability_requests 
+                SET estado = %s,
+                SET scheduled_at = %s,
+                updated_at = NOW() 
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (estado,scheduled_datetime, mnp_request_id))
+            connection.commit()
+            return "Scheduled next check for id: %s at %s", mnp_request_id, scheduled_datetime
+
+        if estado in ('ACON', 'APOR', 'AREC','ACAN'):
+            if estado == 'ACON':
+                status_nc = 'PORT_IN_CONFIRMED'
+            elif estado == 'APOR':
+                status_nc = 'PORT_IN_COMPLETED'
+            elif estado == 'AREC':
+                status_nc = 'PORT_IN_REJECTED'
+            elif estado == 'ACAN':
+                status_nc = 'PORT_IN_CANCELLED'
+            else:
+                status_nc = 'PENDING_RESPONSE'
+
+            print(f"Final status: estado={estado}, status_nc={status_nc}")
+            update_query = """
+                UPDATE portability_requests 
+                SET response_status = %s,
+                response_code = %s,
+                status_nc = %s,
+                description = %s,
+                updated_at = NOW() 
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (response_code,estado, status_nc, description,mnp_request_id))
+            connection.commit()
+            # callback_bss.delay(mnp_request_id, reference_code, session_code, response_code, description, None, None)
+            callback_bss.delay(mnp_request_id, reference_code, session_code, estado, description, None, None)
+            # def callback_bss(self, mnp_request_id, reference_code, session_code, 
+            # response_status, description=None, error_fields=None, porting_window_date=None):
+            
+            return "Final status received for id: %s, status: %s", mnp_request_id, estado
             
             # callback_bss.delay(mnp_request_id)
 

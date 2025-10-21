@@ -85,7 +85,6 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
             with_jitter=True)
         a_seconds = int(a.total_seconds())
 
-        # if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION","REQUEST_FAILED"]:
         if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION"]:
             if request_type == "CANCELLATION" and response_status not in ['ACAN',"400","404"]:
                 submit_to_central_node_cancel.apply_async(
@@ -99,7 +98,7 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
                         countdown=a_seconds
                 )
 
-        if status_nc in ["PENDING_RESPONSE","PORT_IN_CONFIRMED"]:
+        if status_nc in ["PENDING_RESPONSE","PORT_IN_CONFIRMED","SUBMITTED"]:
             check_status.apply_async(
                 args=[request_id,session_code,msisdn, reference_code], 
                 countdown=a_seconds
@@ -139,6 +138,7 @@ def get_due_requests():
         (status_nc LIKE '%PENDING%' OR status_nc LIKE '%REQUEST_FAILED%')
         OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%REQUEST_RESPONDED%')
         OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_IN%')
+        OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%SUBMITTED%')
     )
     AND (scheduled_at IS NULL OR scheduled_at <= NOW())
     AND UPPER(request_type) IN ('CANCELLATION', 'PORT_IN')

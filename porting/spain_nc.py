@@ -135,7 +135,7 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         if response_code == "0000 00000":  # Adjust this condition based on your actual success codes
             status_nc = 'SUBMITTED'
             status_bss = 'PROCESSING'
-            logger.info("Success response from NC id %s response_code %s, description %s", mnp_request_id, response_code, description)
+            logger.info("Success response from NC id %s response_code %s, description %s reference_code %s", mnp_request_id, response_code, description, reference_code)
             success = True
         else:
             status_nc = 'PORT_IN_REJECTED'
@@ -146,10 +146,10 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         # 6. Update database with response
         update_query = """
             UPDATE portability_requests 
-            SET status_nc = %s, session_code_nc = %s, status_bss = %s, response_code = %s, description = %s, updated_at = NOW() 
+            SET status_nc = %s, session_code_nc = %s, status_bss = %s, response_code = %s, description = %s, reference_code = %s, updated_at = NOW() 
             WHERE id = %s
         """        
-        cursor.execute(update_query, (status_nc,session_code, status_bss, response_code, description, mnp_request_id))
+        cursor.execute(update_query, (status_nc,session_code, status_bss, response_code, description, reference_code,mnp_request_id))
         connection.commit()
 
         return success, response_code, description, reference_code

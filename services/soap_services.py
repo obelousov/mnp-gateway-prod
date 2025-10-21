@@ -759,3 +759,51 @@ def json_from_db_to_soap_online(json_data, session_code):
     )
     
     return result
+
+def parse_soap_response_nested_multi(xml, fields, reference_code):
+    """
+    Parse SOAP XML and return a list of requested field values
+    for the given reference_code, or None if not found.
+    Works without needing lxml.
+    """
+    try:
+        xml = xml.strip()
+        root = ET.fromstring(xml)
+    except Exception as e:
+        print(f"Error parsing SOAP XML: {e}")
+        return None
+
+    # Find all <registro> elements, ignoring namespaces
+    registros = [el for el in root.iter() if el.tag.endswith('registro')]
+    if not registros:
+        print("No registro elements found in XML")
+        return None
+
+    # Extract global fields (codigoRespuesta, descripcion)
+    codigo_respuesta = None
+    descripcion = None
+    for el in root.iter():
+        if el.tag.endswith('codigoRespuesta'):
+            codigo_respuesta = el.text.strip() if el.text else None
+        elif el.tag.endswith('descripcion'):
+            descripcion = el.text.strip() if el.text else None
+
+    for reg in registros:
+        # Match reference code
+        ref_el = next((el for el in reg if el.tag.endswith('codigoReferencia')), None)
+        ref_value = ref_el.text.strip() if ref_el is not None and ref_el.text else None
+
+        if ref_value == str(reference_code).strip():
+            record = []
+            for field in fields:
+                if field == "codigoRespuesta":
+                    record.append(codigo_respuesta)
+                elif field == "descripcion":
+                    record.append(descripcion)
+                else:
+                    field_el = next((el for el in reg.iter() if el.tag.endswith(field)), None)
+                    record.append(field_el.text.strip() if field_el is not None and field_el.text else None)
+            return record
+
+    # Not found
+    return None

@@ -314,6 +314,7 @@ def calculate_countdown_working_hours(delta, with_jitter=True):
         tuple: (adjusted_delta, status, scheduled_datetime)
     """
     now = datetime.now()
+    delta = timedelta(seconds=delta)
     scheduled_datetime = now + delta
     print(settings.IGNORE_WORKING_HOURS)
     
