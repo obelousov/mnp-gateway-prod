@@ -418,7 +418,7 @@ def submit_to_central_node_cancel_online_sync(mnp_request_id: int) -> Tuple[bool
         
         if not mnp_request:
             logger.error("Cancellation request %s not found", mnp_request_id)
-            return False, "NOT_FOUND", f"Request {mnp_request_id} not found", None
+            return False, "NOT_FOUND", f"Request {mnp_request_id} not found"
         
         # Get session code
         session_code = initiate_session()
@@ -450,14 +450,15 @@ def submit_to_central_node_cancel_online_sync(mnp_request_id: int) -> Tuple[bool
         success = (response_code == "0000 00000")
         
         # Update database
-        status_nc = 'SUBMITTED' if success else 'ERROR_RESPONSE'
+        status_nc = 'SUBMITTED' if success else 'ERROR_CANCEL_RESPONSE'
+        status_bss = f"STATUS_UPDATED_TO_{response_code}"
         update_query = """
             UPDATE portability_requests 
             SET status_nc = %s, session_code_nc = %s, response_code = %s, 
-                description = %s, updated_at = NOW() 
+                description = %s, status_bss = %s, updated_at = NOW() 
             WHERE id = %s
         """
-        cursor.execute(update_query, (status_nc, session_code, response_code, description, mnp_request_id))
+        cursor.execute(update_query, (status_nc, session_code, response_code, description, status_bss, mnp_request_id))
         connection.commit()
 
         return success, response_code, description

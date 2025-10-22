@@ -912,6 +912,11 @@ class CancelPortabilityResponse_online(BaseModel):
     # msisdn: str = Field(..., examples=["34600000001"], description="Phone number being cancelled")
     # session_code: Optional[str] = Field(None, examples=["SESSION_001"], description="Session code if provided")
     # status: str = Field(..., examples=["PROCESSING"], description="Current request status")
+    success: bool = Field(
+        ...,
+        examples=[True, False],
+        description="Indicates if the operation was successful"
+    )    
     response_code: str = Field(
         ...,
         max_length=10,
@@ -1077,9 +1082,11 @@ async def cancel_portability_online(request: CancelPortabilityRequest_online):
 
         # 3. Submit to NC and get response
         success, response_code, description = submit_to_central_node_cancel_online_sync(request_id)
+        logger.debug("Success: %s", success)
 
         # 4. Return the NC response
         return CancelPortabilityResponse_online(
+            success=success,
             response_code=response_code or "UNKNOWN",
             description=description or "No response from NC",
             campo_erroneo=None
