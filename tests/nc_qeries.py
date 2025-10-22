@@ -930,8 +930,26 @@ def parse_soap_response_nested_multi_1(xml, fields, reference_code):
     # Not found
     return None
 
+def convert_for_mysql_madrid(xml_datetime: str) -> datetime:
+    """Convert to Madrid time and return naive datetime for MySQL"""
+    # Parse and convert to Madrid timezone
+    dt = datetime.fromisoformat(xml_datetime.replace('Z', '+00:00'))
+    madrid_tz = pytz.timezone("Europe/Madrid")
+    dt_madrid = dt.astimezone(madrid_tz)
+    
+    # Remove timezone info for MySQL DATETIME
+    return dt_madrid.replace(tzinfo=None)
+
+# Usage:
+porting_window_str = "2025-10-23T02:00:00+02:00"
+porting_window_db = convert_for_mysql_madrid(porting_window_str)
+# Result: 2025-10-23 02:00:00 (Madrid time, no timezone)
 
 if __name__ == "__main__":
+
+    xml_datetime = "2025-10-23T02:00:00+02:00"
+    print(convert_for_mysql_madrid(xml_datetime))
+    exit()
     # _, _, scheduled_datetime = calculate_countdown_working_hours(
     #                 delta=settings.TIME_DELTA_FOR_STATUS_CHECK, 
     #                 with_jitter=True

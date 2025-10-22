@@ -28,43 +28,23 @@ class ErrorField(BaseModel):
         example="request_date", 
         description="Field name that has error | WSDL: <v1:nombre>"
     )
-    field_description: Optional[str] = Field(
+    error_description: Optional[str] = Field(  # Changed from field_description
         None,
         example="Field is required", 
         description="Error description for this field | WSDL: <v1:descripcion>"
     )
 
 class BSSWebhookRequest(BaseModel):
-    request_id: int = Field(
-        ..., 
-        example="12", 
-        description="Request ID (bigint) which return MNP GW on the initial portin request"
-    )
-    response_code: str = Field(
-        ..., 
-        example="ASOL", 
-        description="Response code from central node. Examples: 'ASOL' (success), 'ACON' (portin request confirmed), 'APOR' (portin completed), 'AREC' (portin rejected) | WSDL: <v1:codigoRespuesta>"
-    )
-    description: str = Field(
-        ..., 
-        example="Request created successfully", 
-        description="Response description or error message from central node | WSDL: <v1:descripcion>"
-    )
-    error_fields: Optional[List[ErrorField]] = Field(
-        default=[],
-        example=[{"field_name": "request_date", "field_description": "Field is required"}],
-        description="Array of error fields with details. Empty array for successful responses | WSDL: <v1:campoErroneo>"
-    )
-    reference_code: str = Field(
-        ..., 
-        example="REF_123456789", 
-        description="Unique reference code for tracking the portability request | WSDL: <por:codigoReferencia>"
-    )
-    porting_window_date: Optional[str] = Field(
-        ..., 
-        example="2025-10-15", 
-        description="Scheduled porting date in YYYY-MM-DD format | WSDL: <por:fechaVentanaCambio>"
-    )
+    request_id: int = Field(..., example="12", description="Request ID")
+    response_code: str = Field(..., example="ASOL", description="Response code from central node")
+    description: str = Field(..., example="Request created successfully", description="Response description")
+    error_fields: Optional[List[ErrorField]] = Field(default=[], description="Array of error fields")
+    reference_code: str = Field(..., example="REF_123456789", description="Unique reference code")
+    porting_window_date: Optional[str] = Field(..., example="2025-10-15", description="Scheduled porting date")
+    # Add the missing fields that your payload includes:
+    session_code: Optional[str] = Field(None, example="20", description="Session code")
+    msisdn: Optional[str] = Field(None, example="621800001", description="MSISDN number")
+    response_status: Optional[str] = Field(None, example="ASOL", description="Response status")
 
 @router.post(
     '/bss-webhook', 
@@ -136,6 +116,7 @@ async def bss_webhook(request: BSSWebhookRequest):
         "reference_code": request.reference_code,
         "description": request.description,
         "porting_window_date": request.porting_window_date,
+        "responce_status":request.response_status,
         "error_count": len(request.error_fields or [])
     })
     
