@@ -936,7 +936,20 @@ if __name__ == "__main__":
     #                 delta=settings.TIME_DELTA_FOR_STATUS_CHECK, 
     #                 with_jitter=True
     # print(scheduled_datetime)
+    _, _, scheduled_datetime = calculate_countdown_working_hours(
+        delta=settings.TIME_DELTA_FOR_STATUS_CHECK,
+        with_jitter=True
+    )
+    print(scheduled_datetime)
 
+    a, _, _ = calculate_countdown_working_hours(
+        delta=timedelta(minutes=0),
+        with_jitter=True
+    )
+    a_seconds = int(a.total_seconds())
+    print(scheduled_datetime)
+
+    exit()
     xml = """
 <?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/"><S:Header/><S:Body><ns14:respuestaConsultarProcesosPortabilidadMovil xmlns:ns17="http://nc.aopm.es/v1-10/extras/fichero" xmlns:ns16="http://nc.aopm.es/v1-10/fichero" xmlns:ns15="http://nc.aopm.es/v1-7/integracion" xmlns:ns14="http://nc.aopm.es/v1-10/portabilidad" xmlns:ns13="http://nc.aopm.es/v1-10/extras/portabilidad" xmlns:ns12="http://nc.aopm.es/v1-10/extras/informe" xmlns:ns11="http://nc.aopm.es/v1-10/extras/incidencia" xmlns:ns10="http://nc.aopm.es/v1-10/extras/buzon" xmlns:ns9="http://nc.aopm.es/v1-10/administracion" xmlns:ns8="http://nc.aopm.es/v1-10/buzon" xmlns:ns7="http://nc.aopm.es/v1-10/extras/administracion" xmlns:ns6="http://nc.aopm.es/v1-10/incidencia" xmlns:ns5="http://nc.aopm.es/v1-10/acceso" xmlns:ns4="http://nc.aopm.es/v1-10/extras" xmlns:ns3="http://nc.aopm.es/v1-10/boletin" xmlns:ns2="http://nc.aopm.es/v1-10"><ns2:codigoRespuesta>0000 00000</ns2:codigoRespuesta><ns2:descripcion>La operación se ha realizado con éxito</ns2:descripcion><ns14:registro><ns14:tipoProceso>ALTA_PORTABILIDAD_MOVIL</ns14:tipoProceso><ns14:codigoReferencia>29979811251021171100203</ns14:codigoReferencia><ns14:rangoMSISDN><ns2:valorInicial>621800001</ns2:valorInicial><ns2:valorFinal>621800001</ns2:valorFinal></ns14:rangoMSISDN><ns14:codigoOperadorDonante>798</ns14:codigoOperadorDonante><ns14:codigoOperadorReceptor>299</ns14:codigoOperadorReceptor><ns14:estado>ASOL</ns14:estado><ns14:fechaVentanaCambio>2025-10-23T02:00:00+02:00</ns14:fechaVentanaCambio><ns14:fechaCreacion>2025-10-21T17:11:21.599+02:00</ns14:fechaCreacion><ns14:fechaMarcaLectura>2025-10-21T17:11:21.599+02:00</ns14:fechaMarcaLectura></ns14:registro><ns14:registro><ns14:tipoProceso>ALTA_PORTABILIDAD_MOVIL</ns14:tipoProceso><ns14:codigoReferencia>79829911250502103200002</ns14:codigoReferencia><ns14:rangoMSISDN><ns2:valorInicial>621800001</ns2:valorInicial><ns2:valorFinal>621800001</ns2:valorFinal></ns14:rangoMSISDN><ns14:codigoOperadorDonante>299</ns14:codigoOperadorDonante><ns14:codigoOperadorReceptor>798</ns14:codigoOperadorReceptor><ns14:estado>APOR</ns14:estado><ns14:fechaVentanaCambio>2025-05-07T02:00:00+02:00</ns14:fechaVentanaCambio><ns14:fechaCreacion>2025-05-02T10:32:02.934+02:00</ns14:fechaCreacion><ns14:fechaMarcaLectura>2025-05-02T10:32:02.934+02:00</ns14:fechaMarcaLectura><ns14:fechaConfirmacion>2025-05-02T14:15:31.096+02:00</ns14:fechaConfirmacion></ns14:registro></ns14:respuestaConsultarProcesosPortabilidadMovil></S:Body></S:Envelope>
     """

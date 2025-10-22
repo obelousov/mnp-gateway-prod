@@ -351,6 +351,7 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
 
         # If it's still pending, queue the next check during working hours
         if estado == 'ASOL':
+            status_nc = 'PENDING_RESPONSE'# request confirmed, now shedule another updates
             # Still same status, updated scheduled_at for next check - within same timenad
             _, _, scheduled_datetime = calculate_countdown_working_hours(
                                                         delta=settings.TIME_DELTA_FOR_STATUS_CHECK, 
@@ -359,12 +360,18 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
             # Update database with the actual scheduled time
             update_query = """
                 UPDATE portability_requests 
-                SET estado = %s,
-                SET scheduled_at = %s,
+                SET response_status = %s,
+                response_code= %s,
+                description = %s,
+                reference_code = %s,
+                scheduled_at = %s,
+                status_nc = %s,
                 updated_at = NOW() 
                 WHERE id = %s
             """
-            cursor.execute(update_query, (estado,scheduled_datetime, mnp_request_id))
+            logger.debug("Update query %s, estado %s, status_nc %s, mnp_request_id %s", 
+             update_query, estado, status_nc, mnp_request_id)
+            cursor.execute(update_query, (estado,response_code, description, reference_code, scheduled_datetime, status_nc, mnp_request_id))
             connection.commit()
             return "Scheduled next check for id: %s at %s", mnp_request_id, scheduled_datetime
 
@@ -383,8 +390,8 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
             print(f"Final status: estado={estado}, status_nc={status_nc}")
             update_query = """
                 UPDATE portability_requests 
-                SET response_status = %s,
-                response_code = %s,
+                SET response_code = %s,
+                response_status = %s,
                 status_nc = %s,
                 description = %s,
                 updated_at = NOW() 

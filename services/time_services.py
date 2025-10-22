@@ -314,7 +314,14 @@ def calculate_countdown_working_hours(delta, with_jitter=True):
         tuple: (adjusted_delta, status, scheduled_datetime)
     """
     now = datetime.now()
-    delta = timedelta(seconds=delta)
+
+    # Handle both int (seconds) and timedelta inputs
+    if isinstance(delta, int):
+        delta = timedelta(seconds=delta)
+    elif not isinstance(delta, timedelta):
+        raise TypeError(f"delta must be timedelta or int, got {type(delta)}")
+
+    # delta = timedelta(seconds=delta)
     scheduled_datetime = now + delta
     print(settings.IGNORE_WORKING_HOURS)
     
@@ -386,12 +393,14 @@ def calculate_countdown_working_hours(delta, with_jitter=True):
         logger.info("Working Hrs Countdown: %s | Window: %s | Execution: %s", 
                     status, time_window, actual_execution_time)
 
-        return timedelta(seconds=final_countdown), status, actual_execution_time
+        # return timedelta(seconds=final_countdown), status, actual_execution_time
+        return timedelta(seconds=final_countdown), status, actual_execution_time.replace(microsecond=0)
     else:
         logger.info("Working Hrs Countdown: %s | Window: %s | Execution: %s", 
                     status, time_window, target_time)
         
-        return timedelta(seconds=base_countdown), status, target_time
+        # return timedelta(seconds=base_countdown), status, target_time
+        return timedelta(seconds=base_countdown), status, target_time.replace(microsecond=0)
     
 def calculate_countdown_working_hours_old(delta, with_jitter=True):
     """
