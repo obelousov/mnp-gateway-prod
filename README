@@ -1,3 +1,9 @@
+to re-build images (eg when update requirements.txt)
+docker compose -f compose.yml -f compose-rabbitmq.yml up -d --build
+
+docker compose -f compose.yml -f compose-rabbitmq.yml up -d
+docker compose -f compose.yml -f compose-rabbitmq.yml down
+
 curl http://localhost:8090/api/v1/health
 {"status":"healthy","service":"MNP Gateway API","version":"1.0.0","timestamp":1759602021.7271955}
 
@@ -101,3 +107,4 @@ root@7e62fac0f3f3:/app# python -m services.soap_builder
 root@b56786830fcc:/app# python -m services.time_services
 
 root@b56786830fcc:/app# python -m tests.nc_qeries
+

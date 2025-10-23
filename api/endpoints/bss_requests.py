@@ -14,6 +14,7 @@ from enum import Enum
 from services.auth import verify_basic_auth
 from fastapi.openapi.docs import get_swagger_ui_html
 from porting.spain_nc import submit_to_central_node_online, submit_to_central_node_cancel_online, submit_to_central_node_cancel_online_sync 
+from ..core.metrics import record_port_in_success, record_port_in_error, record_port_in_processing_time
 
 router = APIRouter()
 
@@ -552,6 +553,7 @@ async def portin_request(alta_data: PortInRequest):
     - Status tracking
     - Error handling and retries
     """
+    start_time = time.time()
     try:
         logger.info("Processing port-in request")
         logger.info("subscriber_type: %s", alta_data.subscriber.subscriber_type.value)
@@ -640,6 +642,10 @@ async def portin_request(alta_data: PortInRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error processing request"
         ) from e
+    
+    finally:
+        processing_time = time.time() - start_time
+        record_port_in_processing_time(processing_time)
 
 class CancellationReason(str, Enum):
     """Allowed cancellation reasons"""

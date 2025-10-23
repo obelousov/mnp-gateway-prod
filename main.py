@@ -6,7 +6,8 @@ from config import settings
 from services.logger import logger, payload_logger, log_payload
 import secrets
 from api.v2.endpoints import health as health_v2
-from api.v1 import bss
+from api.v1 import bss, metrics
+from api.core.middleware import prometheus_middleware
 
 logger.debug("Starting MNP Gateway API")
 
@@ -72,6 +73,16 @@ app.include_router(
     prefix=settings.API_PREFIX,      # Refer as settings.API_V1_PREFIX
     # tags=["BSS Webhook"]
 )
+
+# Add middleware
+app.middleware("http")(prometheus_middleware)
+
+# Include metrics router
+app.include_router(
+    metrics.router,
+    prefix=settings.API_PREFIX  # This will make endpoints: /api/v1/metrics, /api/v1/health
+)
+
 
 @app.get("/",
         include_in_schema=False  # This hides the endpoint from Swagger)

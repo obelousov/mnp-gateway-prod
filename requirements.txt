@@ -17,3 +17,4 @@ redis
 flower
 pydantic
 aiomysql
+prometheus_client
