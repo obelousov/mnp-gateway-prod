@@ -948,17 +948,25 @@ porting_window_db = convert_for_mysql_madrid(porting_window_str)
 if __name__ == "__main__":
 
     xml_datetime = "2025-10-23T02:00:00+02:00"
-    print(convert_for_mysql_madrid(xml_datetime))
-    exit()
+    # print(convert_for_mysql_madrid(xml_datetime))
+    # exit()
     # _, _, scheduled_datetime = calculate_countdown_working_hours(
     #                 delta=settings.TIME_DELTA_FOR_STATUS_CHECK, 
     #                 with_jitter=True
     # print(scheduled_datetime)
+    TIME_DELTA_FOR_STATUS_CHECK = 120
+    # _, _, scheduled_datetime = calculate_countdown_working_hours(
+    #     delta=settings.TIME_DELTA_FOR_STATUS_CHECK,
+    #     with_jitter=True
+    # )
+    print(datetime.now())
     _, _, scheduled_datetime = calculate_countdown_working_hours(
-        delta=settings.TIME_DELTA_FOR_STATUS_CHECK,
-        with_jitter=True
+        delta=TIME_DELTA_FOR_STATUS_CHECK,
+        with_jitter=False
     )
+
     print(scheduled_datetime)
+    exit()
 
     a, _, _ = calculate_countdown_working_hours(
         delta=timedelta(minutes=0),

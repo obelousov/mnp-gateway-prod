@@ -306,30 +306,29 @@ class PortInRequest(BaseModel):
     donor_operator: str = Field(
         ...,
         description="Current operator | WSDL: `<por:codigoOperadorDonante>`",
-        examples=["123"]
+        examples=["798"]
     )
     recipient_operator: str = Field(
         ...,
         description="New operator | WSDL: `<por:codigoOperadorReceptor>`",
-        examples=["345"]
+        examples=["299"]
     )
     subscriber: Subscriber = Field(
         ...,
         description="Subscriber data | WSDL: `<por:abonado>`",
         example={
+            "subscriber_type": "person",
             "identification_document": {
-                "document_type": "NIE", 
-                "document_number": "Y30307876"
+                "document_type": "NIE",
+                "document_number": "Y3037876D"
             },
             "personal_data": {
-                "first_name": "Jose",
-                "first_surname": "Garcia", 
-                "second_surname": "Martinez",
-                "nationality": "ES"
+                "first_name": "Jose",  
+                "first_surname": "Alavaro",
+                "second_surname": "Diego"
             }
         }
-    )
-    # subscriber: dict = Field(
+    )    # subscriber: dict = Field(
     #     ...,
     #     description="Subscriber data | WSDL: `<por:abonado>`",
     #     example={
@@ -367,7 +366,7 @@ class PortInRequest(BaseModel):
     contract_number: str = Field(
         ...,
         description="Contract reference | WSDL: `<por:codigoContrato>`",
-        examples=["CONTRACT_12"]
+        examples=["299-TRAC_12"]
     )
     @validator('contract_number')
     def validate_contract_number(cls, v, values):
@@ -396,7 +395,7 @@ class PortInRequest(BaseModel):
     routing_number: str = Field(
         ...,
         description="Routing identifier | WSDL: `<por:NRNReceptor>`",
-        examples=["NRN_RECEPTOR_001", "RN_2024001", "ROUTE_ABC123"]
+        examples=["906299"]
     )
     @validator('routing_number')
     def validate_routing_number(cls, v):
@@ -455,7 +454,7 @@ class PortInRequest(BaseModel):
     iccid: Optional[str] = Field(
         None,
         description="SIM card identifier (optional) | WSDL: `{iccid_optional}`",
-        examples=["89310410106543789310", "89310410106543789311"],
+        examples=["89214410106543789310"],
         min_length=20,
         max_length=20
     )
@@ -491,7 +490,7 @@ class PortInRequest(BaseModel):
     msisdn: str = Field(
         ...,
         description="Phone number | WSDL: `<por:MSISDN>`",
-        examples=["612345678"],
+        examples=["621800000"],
         pattern="^[0-9]{9}$"
     )
 
@@ -516,12 +515,15 @@ class PortInResponse(BaseModel):
     summary="Submit Port-In Request",
     description="""
     Submit a new number portability request (Port-In) from the donor operator to recipient operator.
-    
+
     This endpoint:
     - Accepts the request from BSS
     - Saves it to the database immediately  
-    - Submit request to the task for processing, depending on working hours and timeband
-    - Returns an immediate 202 Accepted response
+    - Submit request to NC
+    - Returns NC response
+
+    299 CUBEMOVIL FMVNO - 552000000 to  552009999 – NRN(906299) - recipinet operator
+    798 CUBEMOVIL_FMVNO_DUMMY – 621800000 to 621899999 – NRN(704914) - donor operator
     
     **Workflow:**
     1. Request validation and immediate database storage
@@ -698,6 +700,7 @@ class CancelPortabilityResponse(BaseModel):
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(verify_basic_auth)],
     response_model=CancelPortabilityResponse,
+    include_in_schema=False,  # This hides it from Swagger
     summary="Submit Portability Cancellation Request",
     description="""
     Cancel an existing number portability request.
@@ -858,7 +861,7 @@ class CancelPortabilityRequest_online(BaseModel):
     reference_code: str = Field(
         ...,
         description="Portability request reference code returned by NC| WSDL: `por:codigoReferencia`",
-        examples=["PORT_IN_12345", "REF_2024_001"],
+        examples=["29979811251023094300005"],
         min_length=23,
         max_length=23,
     )
