@@ -88,6 +88,15 @@ flower:
 http://localhost:5555/
 admin: admin
 
+with RabitMQ
+docker compose -f compose.yml -f compose-rabbitmq.yml up -d
+docker compose -f compose.yml -f compose-rabbitmq.yml up -d --force-recreate
+docker compose -f compose.yml -f compose-rabbitmq.yml down
+
+RabitMQ UI
+http://localhost:15672/#/
+admin: admin123
+
 root@7e62fac0f3f3:/app# python -m services.soap_builder
 root@b56786830fcc:/app# python -m services.time_services
 

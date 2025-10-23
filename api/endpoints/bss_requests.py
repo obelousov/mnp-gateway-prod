@@ -613,13 +613,13 @@ async def portin_request(alta_data: PortInRequest):
                     detail=response_data
                 )
 
-        # 4. Tell the BSS "We got it, processing now."
-        return {
-            "message": "Request accepted", 
-            "id": new_request_id,
-            "session_code": alta_data.session_code,
-            "status": "PROCESSING"
-        }
+        # # 4. Tell the BSS "We got it, processing now."
+        # return {
+        #     "message": "Request accepted", 
+        #     "id": new_request_id,
+        #     "session_code": alta_data.session_code,
+        #     "status": "PROCESSING"
+        # }
         
     except HTTPException:
         # Re-raise existing HTTP exceptions
