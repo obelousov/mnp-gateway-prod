@@ -1,6 +1,5 @@
 # compose-rabbitmq.yaml
 services:
-
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: rabbitmq-mnp
@@ -23,25 +22,25 @@ services:
 
   celery-worker:
     environment:
-      CELERY_BROKER_URL: "amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//"
-      CELERY_RESULT_BACKEND: "rpc://"
+      CELERY_BROKER_URL: "${CELERY_BROKER_URL:-amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//}"
+      CELERY_RESULT_BACKEND: "${CELERY_RESULT_BACKEND:-rpc://}"
     depends_on:
       rabbitmq:
         condition: service_healthy
 
   celery-beat:
     environment:
-      CELERY_BROKER_URL: "amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//"
-      CELERY_RESULT_BACKEND: "rpc://"
+      CELERY_BROKER_URL: "${CELERY_BROKER_URL:-amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//}"
+      CELERY_RESULT_BACKEND: "${CELERY_RESULT_BACKEND:-rpc://}"
     depends_on:
       rabbitmq:
         condition: service_healthy
 
   flower:
     environment:
-      CELERY_BROKER_URL: "amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//"
-      CELERY_RESULT_BACKEND: "rpc://"
-    command: celery -A celery_app:app --broker=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672// flower --port=5555
+      CELERY_BROKER_URL: "${CELERY_BROKER_URL:-amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//}"
+      CELERY_RESULT_BACKEND: "${CELERY_RESULT_BACKEND:-rpc://}"
+    command: celery -A celery_app:app --broker=${CELERY_BROKER_URL:-amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//} flower --port=5555
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -52,7 +51,3 @@ volumes:
 networks:
   internal-network:
     driver: bridge
-# networks:
-#   internal-network:
-#     external: true
-#     name: yourprojectname_internal-network
