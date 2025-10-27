@@ -807,3 +807,19 @@ def parse_soap_response_nested_multi(xml, fields, reference_code):
 
     # Not found
     return None
+
+from templates.soap_templates import CHECK_PORT_OUT_STATUS_TEMPLATE
+def create_status_check_port_out_soap_nc(session_code: str, operator_code: str, page_count: str) -> str:
+    """
+    Create SOAP for Port-Out status check
+    obtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar
+    """
+    # print ("received mnp_id:", mnp_request_id, session_code, msisdn)
+    logger.debug("create_status_check_port_out_soap_nc with session_code: %s", session_code)
+
+    
+    return CHECK_PORT_OUT_STATUS_TEMPLATE.format(
+        session_code=session_code,
+        operator_code=operator_code,
+        page_count=page_count
+    )

@@ -121,6 +121,7 @@ class Settings:
     APIGEE_OPERATOR_CODE = os.getenv('APIGEE_API_OPERATOR_CODE', '')
     APIGEE_ACCESS_URL = os.getenv('APIGEE_ACCESS_URL', '')
     APIGEE_PORTABILITY_URL = os.getenv('APIGEE_PORTABILITY_URL', '')
+    APIGEE_PORT_OUT_URL = os.getenv('APIGEE_PORT_OUT_URL', '')
 
     PENDING_REQUESTS_TIMEOUT = float(os.getenv('PENDING_REQUESTS_TIMEOUT', '60.0'))  # seconds
    

@@ -945,9 +945,145 @@ porting_window_str = "2025-10-23T02:00:00+02:00"
 porting_window_db = convert_for_mysql_madrid(porting_window_str)
 # Result: 2025-10-23 02:00:00 (Madrid time, no timezone)
 
+from services.soap_services import create_status_check_port_out_soap_nc
+def check_status_port_out(session_code):
+    """
+    Task to check the status of a pending port-out request at the Central Node.
+    """
+    connection = None
+    logger.info("ENTER check_status_port_out() with session_code %s ", session_code)
+    # APIGEE_PORTABILITY_URL=settings.APIGEE_PORTABILITY_URL
+    APIGEE_PORT_OUT_URL=settings.APIGEE_PORT_OUT_URL
+    operator_code=settings.APIGEE_OPERATOR_CODE
+    page_count = "50"
+
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        consultar_payload = create_status_check_port_out_soap_nc(session_code,operator_code, page_count)  # Check status request SOAP
+        # Conditional payload logging
+        log_payload('NC', 'CHECK_STATUS_PORT_OUT_NC', 'REQUEST', str(consultar_payload))
+        headers=settings.get_soap_headers('obtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar')
+        print("Check status headers:", headers)
+
+        # return
+    
+        if not APIGEE_PORT_OUT_URL:
+            raise ValueError("APIGEE_PORT_OUT_URL environment variable is not set.")
+        
+        response = requests.post(APIGEE_PORT_OUT_URL,
+                               data=consultar_payload,
+                               headers=settings.get_soap_headers('obtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar'),
+                               timeout=settings.APIGEE_API_QUERY_TIMEOUT)
+        response.raise_for_status()
+
+        log_payload('NC', 'CHECK_STATUS_PORT_OUT', 'RESPONSE', str(response.text))
+
+        return response.text
+
+        # result = parse_soap_response_nested_multi(response.text,["codigoRespuesta", "descripcion", "error_field", "error_description"])
+
+        # fields = ["tipoProceso", "codigoRespuesta", "descripcion", "codigoReferencia", "estado","fechaVentanaCambio","fechaCreacion"]
+        # reference_code = "29979811251021171100203"
+
+        # result = parse_soap_response_nested_multi(xml_data, fields, reference_code)
+
+        print(f"NC Response Code: {result['codigoRespuesta']}")
+        print(f"NC Description: {result['descripcion']}")
+        print(f"NC Error Field: {result['error_field']}")
+        print(f"NC Error Description: {result['error_description']}")
+        
+        # print(parse_consultar_procesos_response(response.text)    )
+
+        return response.text
+        # If it's still pending, queue the next check during working hours
+        if response_code == 'ASOL':
+            # Still same status, updated scheduled_at for next check - within same timenad
+            _, _, scheduled_datetime = calculate_countdown_working_hours(
+                                                        delta=settings.TIME_DELTA_FOR_STATUS_CHECK, 
+                                                        with_jitter=True
+                                                                                    )
+            # Update database with the actual scheduled time
+            update_query = """
+                UPDATE portability_requests 
+                SET response_status = %s,
+                SET scheduled_at = %s,
+                updated_at = NOW() 
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (response_code,scheduled_datetime, mnp_request_id))
+            connection.commit()
+            return "Scheduled next check for id: %s at %s", mnp_request_id, scheduled_datetime
+
+        if response_code in ('ACON', 'APOR', 'AREC','ACAN'):
+            if response_code == 'ACON':
+                status_nc = 'PORT_IN_CONFIRMED'
+            elif response_code == 'APOR':
+                status_nc = 'PORT_IN_COMPLETED'
+            elif response_code == 'AREC':
+                status_nc = 'PORT_IN_REJECTED'
+            elif response_code == 'ACAN':
+                status_nc = 'PORT_IN_CANCELLED'
+            else:
+                status_nc = 'PENDING_RESPONSE'
+
+            print(f"Final status: response_code={response_code}, status_nc={status_nc}")
+            update_query = """
+                UPDATE portability_requests 
+                SET response_status = %s,
+                status_nc = %s,
+                description = %s,
+                updated_at = NOW() 
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (response_code,status_nc, description,mnp_request_id))
+            connection.commit()
+            # callback_bss.delay(mnp_request_id, reference_code, session_code, response_code, description, None, None)
+            # def callback_bss(self, mnp_request_id, reference_code, session_code, 
+            # response_status, description=None, error_fields=None, porting_window_date=None):
+            
+            return "Final status received for id: %s, status: %s", mnp_request_id, response_code
+            
+            # callback_bss.delay(mnp_request_id)
+
+    finally:
+        if connection and connection.is_connected():
+            cursor.close()
+            connection.close()
+
 if __name__ == "__main__":
 
-    xml_datetime = "2025-10-23T02:00:00+02:00"
+    session_code = initiate_session()
+    xml_data = check_status_port_out(session_code)
+    result = parse_soap_response_dict(xml_data,["codigoRespuesta", "descripcion", "codigoPeticionPaginada","totalRegistros","ultimaPagina"])
+
+    print(f"NC Response Code: {result['codigoRespuesta']}")
+    print(f"NC Description: {result['descripcion']}")
+    print(f"NC codigoPeticionPaginada: {result['codigoPeticionPaginada']}")
+    print(f"NC totalRegistros: {result['totalRegistros']}")
+    print(f"NC ultimaPagina: {result['ultimaPagina']}")
+
+    fields = [
+    "codigoRespuesta",                    # Simple field
+    "descripcion",                        # Simple field  
+    "codigoPeticionPaginada",               # Nested: gets 'codigoOperadorDonante'
+    "totalRegistros",           # Nested: gets the error description
+    "ultimaPagina"
+]
+    codigoRespuesta, descripcion, codigoPeticionPaginada, totalRegistros, ultimaPagina  = parse_soap_response_nested(xml_data, fields)   
+
+    print(f"NC Response Code: {codigoRespuesta}")
+    print(f"NC Description: {descripcion}")
+    print(f"NC codigoPeticionPaginada: {codigoPeticionPaginada}")
+    print(f"NC totalRegistros: {totalRegistros}")
+    print(f"NC ultimaPagina: {ultimaPagina}")
+
+
+    # print(xml_data)
+    exit()
+
+    # xml_datetime = "2025-10-23T02:00:00+02:00"
     # print(convert_for_mysql_madrid(xml_datetime))
     # exit()
     # _, _, scheduled_datetime = calculate_countdown_working_hours(

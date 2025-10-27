@@ -130,3 +130,19 @@ PORTABILITY_REQUEST_TEMPLATE_1 = """<soapenv:Envelope xmlns:soapenv="http://sche
       </por:peticionCrearSolicitudIndividualAltaPortabilidadMovil>
    </soapenv:Body>
 </soapenv:Envelope>"""
+
+CHECK_PORT_OUT_STATUS_TEMPLATE  = """
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:buz="http://nc.aopm.es/v1-10/buzon" xmlns:v1="http://nc.aopm.es/v1-10">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <buz:peticionObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar>
+         <v1:codigoSesion>{session_code}</v1:codigoSesion>
+         <!--Optional:-->
+         <v1:registrosPorPagina>{page_count}</v1:registrosPorPagina>
+         <buz:codigoOperadorObjeto>{operator_code}</buz:codigoOperadorObjeto>
+         <buz:marcarComoSincronizadas>false</buz:marcarComoSincronizadas>
+         <buz:incluirMarcadasComoSincronizadas>false</buz:incluirMarcadasComoSincronizadas>
+      </buz:peticionObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar>
+   </soapenv:Body>
+</soapenv:Envelope>
+"""
