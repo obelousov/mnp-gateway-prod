@@ -74,6 +74,7 @@ def process_pending_requests():
         # logging.error("Database or request error in process_pending_requests: %s", e)
         logger.error("Database or request error in process_pending_requests: %s", e)
 
+from tasks.tasks import check_status_port_out
 @app.task
 def check_single_request(request_id, status_nc, session_code, msisdn, response_status, status_bss,reference_code, request_type):
     """Check a single MNP request and schedule next check if needed"""
@@ -110,6 +111,10 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
                 countdown=a_seconds
             )
 
+        if request_type in ["PORT_OUT"]:
+            check_status_port_out.apply_async()
+
+
     except ValueError as e:
         logger.error("Value error in check_single_request for request %s: %s", request_id, {str(e)})
     except TypeError as e:
@@ -139,9 +144,10 @@ def get_due_requests():
         OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%REQUEST_RESPONDED%')
         OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_IN%')
         OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%SUBMITTED%')
+        OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_OUT%')
     )
     AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-    AND UPPER(request_type) IN ('CANCELLATION', 'PORT_IN')
+    AND UPPER(request_type) IN ('CANCELLATION', 'PORT_IN','PORT_OUT')
     AND country_code = 'ESP'
     """
 

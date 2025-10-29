@@ -3,6 +3,7 @@ docker compose -f compose.yml -f compose-rabbitmq.yml up -d --build
 
 docker compose -f compose.yml -f compose-rabbitmq.yml up -d
 docker compose -f compose.yml -f compose-rabbitmq.yml down
+docker compose -f compose.yml -f compose-rabbitmq.yml restart api
 
 curl http://localhost:8090/api/v1/health
 {"status":"healthy","service":"MNP Gateway API","version":"1.0.0","timestamp":1759602021.7271955}

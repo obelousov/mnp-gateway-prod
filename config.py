@@ -106,6 +106,7 @@ class Settings:
     JITTER_WINDOW_SECONDS = int(os.getenv('JITTER_WINDOW_SECONDS', '60'))  # Spread over 1 minute
 
     TIME_DELTA_FOR_STATUS_CHECK = int(os.getenv('TIME_DELTA_FOR_STATUS_CHECK', '15'))  # 15 minutes
+    TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK = int(os.getenv('TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK', '15'))
     TIME_ZONE = os.getenv('TIME_ZONE', 'Europe/Madrid')
 
     WSDL_SERVICE_SPAIN_MOCK = os.getenv('WSDL_SERVICE_SPAIN_MOCK', '')
@@ -122,6 +123,7 @@ class Settings:
     APIGEE_ACCESS_URL = os.getenv('APIGEE_ACCESS_URL', '')
     APIGEE_PORTABILITY_URL = os.getenv('APIGEE_PORTABILITY_URL', '')
     APIGEE_PORT_OUT_URL = os.getenv('APIGEE_PORT_OUT_URL', '')
+    PAGE_COUNT_PORT_OUT = os.getenv('PAGE_COUNT_PORT_OUT', '')
 
     PENDING_REQUESTS_TIMEOUT = float(os.getenv('PENDING_REQUESTS_TIMEOUT', '60.0'))  # seconds
    

@@ -1054,6 +1054,14 @@ def check_status_port_out(session_code):
 
 if __name__ == "__main__":
 
+    print(settings.TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK)
+    delta = 15*60
+    _, _, scheduled_datetime = calculate_countdown_working_hours(
+                                                        delta=delta, 
+                                                        with_jitter=True)
+    print(scheduled_datetime)
+    exit()
+
     session_code = initiate_session()
     xml_data = check_status_port_out(session_code)
     result = parse_soap_response_dict(xml_data,["codigoRespuesta", "descripcion", "codigoPeticionPaginada","totalRegistros","ultimaPagina"])

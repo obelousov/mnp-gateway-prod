@@ -863,3 +863,106 @@ def submit_to_central_node_task(self, mnp_request_id: int) -> Tuple[bool, Option
             cursor.close()
         if connection and connection.is_connected():
             connection.close()
+
+from services.soap_services import create_status_check_port_out_soap_nc
+@app.task(bind=True, max_retries=3)
+def check_status_port_out(self):
+    """
+    Task to check the status of port-out requests at the Central Node.
+    """
+    session_code = initiate_session()
+
+    if not session_code:
+        logger.error("Failed to initiate session for port_out check")
+        return False, "SESSION_ERROR", "Failed to initiate session"
+
+    logger.info("ENTER check_status_port_out() with session_code %s ", session_code)
+    # APIGEE_PORTABILITY_URL=settings.APIGEE_PORTABILITY_URL
+    APIGEE_PORT_OUT_URL=settings.APIGEE_PORT_OUT_URL
+    operator_code=settings.APIGEE_OPERATOR_CODE
+    page_count=settings.PAGE_COUNT_PORT_OUT
+
+    connection = None
+
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        # cursor.execute("SELECT status_nc, session_code, msisdn, response_status FROM portability_requests WHERE id = %s",(mnp_request_id,))
+        # mnp_request = cursor.fetchone()
+        # status_nc_old = mnp_request['status_nc'] if mnp_request else 'NOT_FOUND'
+        # estado_old = mnp_request['response_status'] if mnp_request else 'NOT_FOUND'
+        # msisdn = mnp_request['msisdn']
+        # session_code_bss = mnp_request['session_code']
+        
+        consultar_payload = create_status_check_port_out_soap_nc(session_code,operator_code, page_count)  # Check status request SOAP
+        # Conditional payload logging
+        log_payload('NC', 'CHECK_STATUS_PORT_OUT_NC', 'REQUEST', str(consultar_payload))
+        headers=settings.get_soap_headers('obtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar')
+        print("Check status headers:", headers)
+
+        if not APIGEE_PORT_OUT_URL:
+            raise ValueError("APIGEE_PORT_OUT_URL environment variable is not set.")
+        
+        response = requests.post(APIGEE_PORT_OUT_URL,
+                               data=consultar_payload,
+                               headers=settings.get_soap_headers('obtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar'),
+                               timeout=settings.APIGEE_API_QUERY_TIMEOUT)
+        response.raise_for_status()
+
+        log_payload('NC', 'CHECK_STATUS_PORT_OUT', 'RESPONSE', str(response.text))
+
+        fields = [
+            "codigoRespuesta",                    # Simple field
+            "descripcion",                        # Simple field  
+            "codigoPeticionPaginada",               # Nested: gets 'codigoOperadorDonante'
+            "totalRegistros",           # Nested: gets the error description
+            "ultimaPagina"
+                ]
+
+        xml_data = response.text
+        response_code, description, page_code, total_reg, last_page  = parse_soap_response_nested(xml_data, fields)   
+
+        # print(f"NC Response Code: {codigoRespuesta}")
+        # print(f"NC Description: {descripcion}")
+        # print(f"NC codigoPeticionPaginada: {codigoPeticionPaginada}")
+        # print(f"NC totalRegistros: {totalRegistros}")
+        # print(f"NC ultimaPagina: {ultimaPagina}")
+
+        logger.debug("Received port-out check response: codigoRespuesta=%s, description=%s, codigoPeticionPaginada=%s, totalRegistros=%s ultimaPagina=%s", 
+             response_code, description, page_code, total_reg, last_page)
+        
+        print("Received port-out check response: codigoRespuesta=%s, description=%s, codigoPeticionPaginada=%s, totalRegistros=%s ultimaPagina=%s" % 
+            (response_code, description, page_code, total_reg, last_page))
+
+        # status_nc =""
+        request_type = "PORT_OUT"
+
+        _, _, scheduled_datetime = calculate_countdown_working_hours(
+                                                        delta=settings.TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK, 
+                                                        with_jitter=True
+                                                                                    )
+        # Update database with the actual scheduled time
+        update_query = """
+                UPDATE portability_requests 
+                SET response_code= %s,
+                description = %s,
+                reference_code = %s,
+                session_code = %s,
+                scheduled_at = %s,
+                updated_at = NOW() 
+                WHERE request_type = %s
+            """
+        cursor.execute(update_query, (response_code,description, page_code, session_code, scheduled_datetime, request_type))
+        connection.commit()
+
+    except requests.exceptions.RequestException as exc:
+        print(f"Status check failed, retrying: {exc}")
+        self.retry(exc=exc, countdown=120)
+    except Error as e:
+        print(f"Database error during status check: {e}")
+        self.retry(exc=e, countdown=30)
+    finally:
+        if connection and connection.is_connected():
+            cursor.close()
+            connection.close()
