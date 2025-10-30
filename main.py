@@ -54,14 +54,20 @@ async def log_requests(request: Request, call_next):
         "query_params": str(request.query_params) if request.query_params else ""
     }
     
-    # Log using your custom JSON logger
+    # Log using custom JSON logger
+    # logger.debug(
+    #     "HTTP %s %s - %s - %s",
+    #     request.method,
+    #     request.url.path,
+    #     response.status_code,
+    #     access_log_record
+    # )
+
     logger.debug(
-        "HTTP %s %s - %s",
-        request.method,
-        request.url.path,
-        response.status_code,
-        extra={"access_log": access_log_record}
+        "HTTP: %s",
+        access_log_record
     )
+
     
     return response
 
