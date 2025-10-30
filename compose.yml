@@ -18,7 +18,8 @@ services:
     environment:
       # LOG_PATH: "/opt/Roamware/logs/mrf/log.json"
       LOG_PATH: "/var/log/mnp/log.json"
-      DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+      # DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+      DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@${DB_HOST}:${DB_PORT}/${MYSQL_DATABASE}"
       REDIS_URL: "redis://redis:6379/0"
       TZ: ${TIME_ZONE}
     depends_on:
@@ -89,7 +90,8 @@ services:
     build: .
     container_name: celery-worker-mnp
     environment:
-      DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+      # DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+      DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@${DB_HOST}:${DB_PORT}/${MYSQL_DATABASE}"
       # REDIS_URL: "redis://redis:6379/0"
       REDIS_URL: "${REDIS_URL}"
       TZ: ${TIME_ZONE}
@@ -112,7 +114,8 @@ services:
     build: .
     container_name: celery-beat-mnp
     environment:
-      DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+      # DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+      DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@${DB_HOST}:${DB_PORT}/${MYSQL_DATABASE}"
       # REDIS_URL: "redis://redis:6379/0"
       REDIS_URL: "${REDIS_URL}"
       TZ: ${TIME_ZONE}
@@ -136,7 +139,8 @@ services:
     build: .  # Use your own build instead of official image
     container_name: flower-monitor-mnp
     environment:
-      DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+      # DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+      DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@${DB_HOST}:${DB_PORT}/${MYSQL_DATABASE}"
       REDIS_URL: "redis://redis:6379/0"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
