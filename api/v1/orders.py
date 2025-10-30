@@ -73,7 +73,7 @@ class PortabilityQuery(BaseModel):
     )
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "id": 189,
                 "request_type": "PORT_IN",

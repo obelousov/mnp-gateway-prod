@@ -142,6 +142,15 @@ class Settings:
     API_USERNAME = os.getenv('API_USERNAME', 'apiuser')
     API_PASSWORD = os.getenv('API_PASSWORD', 'api@password')
 
+    SERVICE_NAME = os.getenv('SERVICE_NAME', 'mnp-gateway')
+    ARTIFACT_ID = os.getenv('ARTIFACT_ID', 'mnp-gateway:1.0.0')
+
+    ENABLE_FILE_LOGGING = os.getenv('ENABLE_FILE_LOGGING', 'true').lower() == 'true'
+    ENABLE_STDOUT_LOGGING = os.getenv('ENABLE_STDOUT_LOGGING', 'true').lower() == 'true'
+    APP_LOG_FILE = os.getenv('APP_LOG_FILE', '/var/log/mnp.log')
+    PAYLOAD_LOG_FILE = os.getenv('PAYLOAD_LOG_FILE', '/var/log/payload.log')
+    SAVE_PAYLOAD_TO_LOG = int(os.getenv('SAVE_PAYLOAD_TO_LOG', '3'))
+
     # Database configuration as dict (for existing db_utils compatibility)
     @property
     def mysql_config(self) -> dict:

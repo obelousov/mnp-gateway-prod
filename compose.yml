@@ -22,6 +22,12 @@ services:
       DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@${DB_HOST}:${DB_PORT}/${MYSQL_DATABASE}"
       REDIS_URL: "redis://redis:6379/0"
       TZ: ${TIME_ZONE}
+    logging:
+      driver: "json-file"
+      # driver: "local"
+      options:
+        max-size: "50m"
+        max-file: "5"
     depends_on:
       - db
       - redis
