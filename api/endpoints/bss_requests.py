@@ -966,7 +966,7 @@ class CancelPortabilityResponse_online(BaseModel):
 #     )
     
 @router.post(
-    '/cancel_online', 
+    '/cancel-online', 
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(verify_basic_auth)],
     response_model=CancelPortabilityResponse_online,

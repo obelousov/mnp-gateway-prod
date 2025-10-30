@@ -6,7 +6,7 @@ from config import settings
 from services.logger import logger, payload_logger, log_payload
 import secrets
 from api.v2.endpoints import health as health_v2
-from api.v1 import bss, metrics
+from api.v1 import bss, metrics, orders
 from api.core.middleware import prometheus_middleware
 
 logger.debug("Starting MNP Gateway API")
@@ -70,6 +70,12 @@ app.include_router(
 
 app.include_router(
     bss.router,
+    prefix=settings.API_PREFIX,      # Refer as settings.API_V1_PREFIX
+    # tags=["BSS Webhook"]
+)
+
+app.include_router(
+    orders.router,
     prefix=settings.API_PREFIX,      # Refer as settings.API_V1_PREFIX
     # tags=["BSS Webhook"]
 )
