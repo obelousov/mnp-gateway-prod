@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi import FastAPI, HTTPException, status, Depends,Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from api.endpoints import bss_requests, health, italy_requests
@@ -8,6 +8,25 @@ import secrets
 from api.v2.endpoints import health as health_v2
 from api.v1 import bss, metrics, orders
 from api.core.middleware import prometheus_middleware
+import logging
+from fastapi.logger import logger as fastapi_logger
+
+# Configure Uvicorn to use custom JSON logger
+uvicorn_logger = logging.getLogger("uvicorn")
+uvicorn_logger.handlers = logger.handlers
+uvicorn_logger.setLevel(logger.level)
+uvicorn_logger.propagate = False
+
+# Configure uvicorn.access logger
+uvicorn_access_logger = logging.getLogger("uvicorn.access")
+uvicorn_access_logger.handlers = logger.handlers
+# uvicorn_access_logger.setLevel(logger.level)
+uvicorn_access_logger.setLevel(logging.WARNING)  # CHANGED FROM logger.level
+uvicorn_access_logger.propagate = False
+
+# Configure FastAPI's logger
+fastapi_logger.handlers = logger.handlers
+fastapi_logger.setLevel(logger.level)
 
 logger.debug("Starting MNP Gateway API")
 
@@ -18,6 +37,33 @@ app = FastAPI(
     docs_url=None,  # Disable default docs
     redoc_url=None  # Disable default redoc
 )
+
+# Custom middleware to log requests in JSON format
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Custom middleware to log HTTP requests in JSON format"""
+    response = await call_next(request)
+    
+    # Create access log record
+    access_log_record = {
+        "client_ip": request.client.host if request.client else "unknown",
+        "method": request.method,
+        "path": request.url.path,
+        "status_code": response.status_code,
+        "user_agent": request.headers.get("user-agent", ""),
+        "query_params": str(request.query_params) if request.query_params else ""
+    }
+    
+    # Log using your custom JSON logger
+    logger.debug(
+        "HTTP %s %s - %s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        extra={"access_log": access_log_record}
+    )
+    
+    return response
 
 # Basic Auth credentials (store in environment variables in production)
 SWAGGER_USERNAME = settings.SWAGGER_USERNAME  # Default: "admin"
