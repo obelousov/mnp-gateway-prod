@@ -37,14 +37,7 @@ to generate self-signed certifciate for testing:
 openssl req -x509 -nodes -days 365 -newkey rsa:2048   -keyout traefik/certs/private.key   -out traefik/certs/certificate.crt   -subj "/C=US/ST=State/L=City/O=MNP/CN=mnp-api.olbe.tech"   -addext "subjectAltName=DNS:mnp-api.olbe.tech,DNS:localhost,IP:127.0.0.1"
   705  openssl x509 -in traefik/certs/certificate.crt -text -noout | grep -A 5 "X509v3"
 
-
--- Create the database
-CREATE DATABASE mnp_database CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- Or if database exists but user lacks permissions:
-GRANT ALL PRIVILEGES ON mnp_database.* TO 'pondphone'@'%';
-FLUSH PRIVILEGES;
-
+=== DB schema ===
 SET NAMES utf8;
 SET time_zone = '+00:00';
 SET foreign_key_checks = 0;
@@ -52,44 +45,64 @@ SET sql_mode = 'NO_AUTO_VALUE_ON_ZERO';
 
 SET NAMES utf8mb4;
 
+DROP DATABASE IF EXISTS `mnp_database`;
+CREATE DATABASE `mnp_database` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci */;
+USE `mnp_database`;
+
 DROP TABLE IF EXISTS `portability_requests`;
 CREATE TABLE `portability_requests` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `session_code` varchar(255) DEFAULT NULL COMMENT 'codigoSesion',
-  `request_type` varchar(255) DEFAULT NULL COMMENT 'eg port_in or port_out',
-  `status_bss` varchar(255) DEFAULT NULL COMMENT 'status of bss query',
-  `status_nc` varchar(255) DEFAULT NULL COMMENT 'status of nc query',
-  `request_date` date DEFAULT NULL COMMENT 'fechaSolicitudPorAbonado',
-  `description` varchar(255) DEFAULT NULL COMMENT 'eg Solicitud creada exitosamente',
-  `donor_operator` varchar(50) DEFAULT NULL COMMENT 'codigoOperadorDonante',
-  `recipient_operator` varchar(50) DEFAULT NULL COMMENT 'codigoOperadorReceptor',
-  `id_type` varchar(20) DEFAULT NULL COMMENT 'abonado.documentoIdentificacion.tipo',
-  `id_number` varchar(50) DEFAULT NULL COMMENT 'abonado.documentoIdentificacion.documento',
-  `contract_code` varchar(100) DEFAULT NULL COMMENT 'codigoContrato',
-  `nrn_receptor` varchar(100) DEFAULT NULL COMMENT 'NRNReceptor',
-  `porting_window_date` date DEFAULT NULL COMMENT 'fechaVentanaCambio',
-  `iccid` varchar(20) DEFAULT NULL COMMENT 'ICCID',
-  `msisdn` varchar(15) DEFAULT NULL COMMENT 'MSISDN',
-  `phone_number` varchar(15) DEFAULT NULL COMMENT 'Alternative to MSISDN',
-  `status` enum('PENDING_SUBMIT','ASOL','ACON','AREC','APOR') CHARACTER SET ascii COLLATE ascii_bin DEFAULT 'PENDING_SUBMIT',
-  `response_status` varchar(255) DEFAULT NULL COMMENT 'resopnce status, eg 200',
-  `requested_at` datetime DEFAULT current_timestamp(),
-  `scheduled_at` datetime DEFAULT NULL COMMENT 'time if future for the next query to NC',
-  `actual_porting_time` datetime DEFAULT NULL,
-  `rejection_reason` text CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish_ci DEFAULT NULL,
-  `created_at` datetime DEFAULT current_timestamp(),
-  `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `next_check_at` datetime DEFAULT NULL,
-  `check_status` enum('PENDING','IN_PROGRESS','COMPLETED','FAILED') DEFAULT 'PENDING',
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `country_code` varchar(3) NOT NULL DEFAULT 'ESP',
+  `request_type` enum('PORT_IN','PORT_OUT','CANCELLATION','MULTISIM','EXTENSION') NOT NULL,
+  `cancel_request_id` bigint(20) NOT NULL DEFAULT 0 COMMENT 'id of portin request',
+  `reference_code` varchar(100) DEFAULT '' COMMENT 'Unique reference from NC system',
+  `session_code` varchar(100) DEFAULT NULL COMMENT 'Session identifier from BSS',
+  `session_code_nc` varchar(100) DEFAULT NULL COMMENT 'Session identifier from NC',
+  `request_code` varchar(100) DEFAULT NULL COMMENT 'Internal request identifier',
+  `status_bss` varchar(50) DEFAULT 'PROCESSING' COMMENT 'BSS system status',
+  `status_nc` varchar(50) DEFAULT 'PENDING' COMMENT 'NC system status',
+  `response_code` varchar(10) DEFAULT '' COMMENT 'coddigoRespuesta',
+  `response_status` varchar(10) DEFAULT '' COMMENT 'Latest response code from NC',
+  `description` varchar(1000) DEFAULT NULL,
   `retry_count` int(11) DEFAULT 0,
-  `last_checked_at` datetime DEFAULT NULL,
+  `last_error` text DEFAULT NULL COMMENT 'Last error message',
+  `msisdn` varchar(15) NOT NULL DEFAULT '' COMMENT 'Phone number',
+  `iccid` varchar(22) DEFAULT NULL COMMENT 'SIM card number',
+  `subscriber_type` enum('person','company') DEFAULT NULL COMMENT 'person/company',
+  `document_type` enum('NIF','CIF','NIE','PAS') NOT NULL,
+  `document_number` varchar(50) NOT NULL DEFAULT '',
+  `first_name` varchar(100) DEFAULT NULL,
+  `first_surname` varchar(100) DEFAULT NULL,
+  `second_surname` varchar(100) DEFAULT NULL,
+  `nationality` varchar(3) DEFAULT 'ESP',
+  `name_surname` varchar(200) NOT NULL DEFAULT '',
+  `contract_number` varchar(100) DEFAULT NULL COMMENT 'Subscriber contract number',
+  `donor_operator` varchar(50) NOT NULL DEFAULT '' COMMENT 'Current operator',
+  `recipient_operator` varchar(50) NOT NULL DEFAULT '' COMMENT 'New operator',
+  `routing_number` varchar(20) DEFAULT '' COMMENT 'Routing information',
+  `desired_porting_date` varchar(20) DEFAULT NULL,
+  `porting_window` datetime DEFAULT NULL COMMENT 'Scheduled porting window date/time from NC',
+  `reason_code` varchar(50) DEFAULT NULL COMMENT 'Reason for port-out',
+  `cancellation_reason` varchar(150) DEFAULT NULL,
+  `cancellation_initiated_by_donor` varchar(150) DEFAULT NULL,
+  `requested_at` timestamp NULL DEFAULT NULL COMMENT 'When customer requested',
+  `scheduled_at` timestamp NULL DEFAULT NULL COMMENT 'When to process next',
+  `completed_at` timestamp NULL DEFAULT NULL COMMENT 'When request completed',
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
-  KEY `idx_session_code` (`session_code`),
+  KEY `idx_country_type` (`country_code`,`request_type`),
+  KEY `idx_status_composite` (`status_nc`,`status_bss`,`scheduled_at`),
   KEY `idx_msisdn` (`msisdn`),
-  KEY `idx_phone_number` (`phone_number`),
-  KEY `idx_status` (`status`),
-  KEY `idx_created_at` (`created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `idx_reference_code` (`reference_code`),
+  KEY `idx_session_code` (`session_code`),
+  KEY `idx_donor_recipient` (`donor_operator`,`recipient_operator`),
+  KEY `idx_created_at` (`created_at`),
+  KEY `idx_scheduled_status` (`scheduled_at`,`status_nc`),
+  KEY `idx_completion` (`completed_at`,`country_code`),
+  KEY `idx_document` (`document_type`,`document_number`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Mobile number portability requests (IN/OUT/CANCEL/MULTISIM)';
+
 
 flower:
 http://localhost:5555/
