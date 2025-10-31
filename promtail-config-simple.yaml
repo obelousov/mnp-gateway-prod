@@ -18,9 +18,11 @@ scrape_configs:
           __path__: /var/log/mnp.log
     pipeline_stages:
       - regex:
-          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>\w+) - (?P<level>\w+) - (?P<message>.+)'
+          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>\w+) - (?P<level>\w+) - \[(?P<module>[^:]+):(?P<function>[^:]+):(?P<line>\d+)\] - (?P<message>.+)'
       - labels:
           level:
+          module:
+          function:
       - output:
           source: message
 

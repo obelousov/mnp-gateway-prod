@@ -1055,6 +1055,26 @@ def check_status_port_out(session_code):
 if __name__ == "__main__":
 
     xml_data = """
+2025-10-31 19:56:32,200 - mnp_payload - INFO - NC_CANCEL_REQUEST: <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <por:peticionCancelarSolicitudAltaPortabilidadMovil>
+         <v1:codigoSesion>e904d24522fd461dd580a7f84907244b</v1:codigoSesion>
+         <por:codigoReferencia>29979811251031124400201</por:codigoReferencia>
+         <por:causaEstado>CANC_ABONA</por:causaEstado>
+         <por:cancelacionIniciadaPorDonante>1</por:cancelacionIniciadaPorDonante>
+      </por:peticionCancelarSolicitudAltaPortabilidadMovil>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+
+"""
+    cleaned_payload = xml_data.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+    cleaned_payload = "".join(xml_data.split())
+    print(cleaned_payload)
+    exit()
+
+    xml_data = """
 <?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S=\"http://schemas.xmlsoap.org/soap/envelope/\"><S:Header/><S:Body><ns14:respuestaConsultarProcesosPortabilidadMovil xmlns:ns17=\"http://nc.aopm.es/v1-10/extras/fichero\" xmlns:ns16=\"http://nc.aopm.es/v1-10/fichero\" xmlns:ns15=\"http://nc.aopm.es/v1-7/integracion\" xmlns:ns14=\"http://nc.aopm.es/v1-10/portabilidad\" xmlns:ns13=\"http://nc.aopm.es/v1-10/extras/portabilidad\" xmlns:ns12=\"http://nc.aopm.es/v1-10/extras/informe\" xmlns:ns11=\"http://nc.aopm.es/v1-10/extras/incidencia\" xmlns:ns10=\"http://nc.aopm.es/v1-10/extras/buzon\" xmlns:ns9=\"http://nc.aopm.es/v1-10/administracion\" xmlns:ns8=\"http://nc.aopm.es/v1-10/buzon\" xmlns:ns7=\"http://nc.aopm.es/v1-10/extras/administracion\" xmlns:ns6=\"http://nc.aopm.es/v1-10/incidencia\" xmlns:ns5=\"http://nc.aopm.es/v1-10/acceso\" xmlns:ns4=\"http://nc.aopm.es/v1-10/extras\" xmlns:ns3=\"http://nc.aopm.es/v1-10/boletin\" xmlns:ns2=\"http://nc.aopm.es/v1-10\"><ns2:codigoRespuesta>0000 00000</ns2:codigoRespuesta><ns2:descripcion>La operación se ha realizado con éxito</ns2:descripcion><ns14:registro><ns14:tipoProceso>ALTA_PORTABILIDAD_MOVIL</ns14:tipoProceso><ns14:codigoReferencia>29979811251031102100103</ns14:codigoReferencia><ns14:rangoMSISDN><ns2:valorInicial>552000003</ns2:valorInicial><ns2:valorFinal>552000003</ns2:valorFinal></ns14:rangoMSISDN><ns14:codigoOperadorDonante>798</ns14:codigoOperadorDonante><ns14:codigoOperadorReceptor>299</ns14:codigoOperadorReceptor><ns14:estado>AREC</ns14:estado><ns14:fechaVentanaCambio>2025-11-04T02:00:00+01:00</ns14:fechaVentanaCambio><ns14:fechaCreacion>2025-10-31T10:21:59.839+01:00</ns14:fechaCreacion><ns14:fechaMarcaLectura>2025-10-31T10:21:59.839+01:00</ns14:fechaMarcaLectura><ns14:fechaRechazo>2025-10-31T14:39:30.527+01:00</ns14:fechaRechazo><ns14:causaRechazo>RECH_BNUME</ns14:causaRechazo></ns14:registro></ns14:respuestaConsultarProcesosPortabilidadMovil></S:Body></S:Envelope>
     """
     fields = ["tipoProceso", "codigoRespuesta", "descripcion", "codigoReferencia", "estado","fechaVentanaCambio","fechaCreacion","causaRechazo"]

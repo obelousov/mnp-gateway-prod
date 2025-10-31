@@ -1,4 +1,5 @@
 import logging
+import re
 from config import settings
 
 class LoggerService:
@@ -27,8 +28,10 @@ class LoggerService:
         if self.logger.handlers:
             self.logger.handlers.clear()
         
-        # Create basic formatter
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        # Create enhanced formatter with module, function, line
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - [%(module)s:%(funcName)s:%(lineno)d] - %(message)s'
+        )
         
         # Add file handler
         app_log_file = getattr(settings, 'APP_LOG_FILE', 'logs/mnp.log')
@@ -52,7 +55,7 @@ class LoggerService:
         if self.payload_logger.handlers:
             self.payload_logger.handlers.clear()
         
-        # Create basic formatter
+        # Create basic formatter for payload logs
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         
         # Add file handler
@@ -77,14 +80,24 @@ class LoggerService:
         return False
     
     def log_payload(self, service_type: str, operation: str, direction: str, payload: str):
-        """Simple payload logging method"""
+        """Logs cleaned XML payload in a truly single line."""
         if not self.should_log_payload(service_type):
             return
-        
-        # Simple log format: SERVICE_OPERATION_DIRECTION: payload
-        log_message = f"{service_type}_{operation}_{direction}: {payload}"
-        self.payload_logger.info(log_message)
 
+        if payload:
+            # 1️⃣ Replace all whitespace (newlines, tabs, multiple spaces) with a single space
+            cleaned_payload = re.sub(r'\s+', ' ', payload).strip()
+
+            # 2️⃣ Remove spaces between XML tags for compact output
+            cleaned_payload = re.sub(r'>\s+<', '><', cleaned_payload)
+        else:
+            cleaned_payload = payload
+
+        # 3️⃣ Construct single-line log message
+        log_message = f"{service_type}_{operation}_{direction}: {cleaned_payload}"
+
+        # 4️⃣ Write to the payload logger
+        self.payload_logger.info(log_message)
 # Create singleton instance
 logger_service = LoggerService()
 
