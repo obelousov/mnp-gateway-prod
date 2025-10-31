@@ -1,0 +1,43 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://62.164.218.16:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: mnp-api-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: mnp-api
+          __path__: /var/log/mnp.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>\w+) - (?P<level>\w+) - (?P<message>.+)'
+      - labels:
+          level:
+      - output:
+          source: message
+
+  - job_name: payload-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: mnp-payload
+          __path__: /var/log/payload.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>\w+) - (?P<level>\w+) - (?P<service_type>\w+)_(?P<operation>\w+)_(?P<direction>\w+): (?P<message>.+)'
+      - labels:
+          level:
+          service_type:
+          operation:
+          direction:
+      - output:
+          source: message

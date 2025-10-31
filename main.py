@@ -3,7 +3,8 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from api.endpoints import bss_requests, health, italy_requests
 from config import settings
-from services.logger import logger, payload_logger, log_payload
+# from services.logger import logger
+from services.logger_simple import logger
 import secrets
 from api.v2.endpoints import health as health_v2
 from api.v1 import bss, metrics, orders
@@ -63,10 +64,11 @@ async def log_requests(request: Request, call_next):
     #     access_log_record
     # )
 
-    logger.debug(
-        "HTTP: %s",
-        access_log_record
-    )
+    # TODO: enable if required
+    # logger.debug(
+    #     "HTTP: %s",
+    #     access_log_record
+    # )
 
     
     return response

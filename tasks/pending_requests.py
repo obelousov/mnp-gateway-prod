@@ -14,7 +14,8 @@ import pytz
 from services.database_service import get_db_connection
 # from config import logger
 from tasks.tasks import submit_to_central_node, check_status, callback_bss, submit_to_central_node_cancel
-from services.logger import logger, payload_logger, log_payload
+# from services.logger import logger
+from services.logger_simple import log_payload, logger
 from config import settings
 
 @app.task

@@ -196,6 +196,15 @@ services:
     networks:
       - internal-network
       
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - ./logs:/var/log:ro
+      - ./promtail-config-simple.yaml:/etc/promtail/config.yaml
+    command: -config.file=/etc/promtail/config.yaml
+    networks:
+      - internal-network
+
 volumes:
   logs:
   db_data:

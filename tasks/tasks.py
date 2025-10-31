@@ -17,7 +17,8 @@ import pytz
 from services.database_service import get_db_connection
 from config import settings
 from services.time_services import calculate_countdown_working_hours
-from services.logger import logger, payload_logger, log_payload
+# from services.logger import logger
+from services.logger_simple import log_payload, logger
 from porting.spain_nc import initiate_session
 
 WSDL_SERVICE_SPAIN_MOCK = settings.WSDL_SERVICE_SPAIN_MOCK
@@ -215,7 +216,7 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
         
         consultar_payload = create_status_check_soap_nc(mnp_request_id, session_code, msisdn)  # Check status request SOAP
         # Conditional payload logging
-        log_payload('NC', 'CHECK_STATUS', 'REQUEST', str(consultar_payload))
+        # log_payload('NC', 'CHECK_STATUS', 'REQUEST', str(consultar_payload))
 
         # if not WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS:
         #     raise ValueError("WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS environment variable is not set.")
@@ -239,7 +240,7 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
         # fields = ["codigoRespuesta", "descripcion","codigoReferencia","estado"]
         # response_code, description, reference_code, estado  = parse_soap_response_nested_multi(response.text, fields) 
 
-        fields = ["tipoProceso", "codigoRespuesta", "descripcion", "codigoReferencia", "estado","fechaVentanaCambio","fechaCreacion"]
+        fields = ["tipoProceso", "codigoRespuesta", "descripcion", "codigoReferencia", "estado","fechaVentanaCambio","fechaCreacion","causaRechazo"]
         result = parse_soap_response_nested_multi(response.text, fields, reference_code)
 
         # Ensure result is an iterable (the parser may return None) to avoid typing/None issues
@@ -252,6 +253,7 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
         # Access by field name safely
         estado = result_dict.get("estado")
         reference_code = result_dict.get("codigoReferencia")
+        reject_code = result_dict.get("causaRechazo")
         description = result_dict.get("descripcion")
         response_code = result_dict.get("codigoRespuesta")
         porting_window = result_dict.get("fechaVentanaCambio")
@@ -259,13 +261,13 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
 
          
         # print(f"Received check response: response_code={response_code}, description={description}, session_code={session_code}, status=estado")
-        logger.debug("Received check response: response_code=%s, description=%s, reference_code=%s, status=%s porting_window=%s", 
-             response_code, description, reference_code, estado, porting_window_db)
+        logger.debug("Received check response: response_code=%s, reject_code=%s, description=%s, reference_code=%s, status=%s porting_window=%s", 
+             response_code, reject_code, description, reference_code, estado, porting_window_db)
         
-        print("Received check response: response_code=%s, description=%s, reference_code=%s, status=%s" % 
-            (response_code, description, reference_code, estado))
+        # print("Received check response: response_code=%s, description=%s, reference_code=%s, status=%s" % 
+        #     (response_code, description, reference_code, estado))
 
-        log_payload('NC', 'CHECK_STATUS', 'RESPONSE', str(response.text))
+        # log_payload('NC', 'CHECK_STATUS', 'RESPONSE', str(response.text))
 
         status_nc =""
         # If it's still pending, queue the next check during working hours
@@ -294,10 +296,12 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
             cursor.execute(update_query, (estado,response_code, description, reference_code, scheduled_datetime, status_nc, porting_window_db, mnp_request_id))
             connection.commit()
             status_changed = (estado != estado_old)    # callback_bss.delay(mnp_request_id)
-            logger.debug("estado %s, estado_old %s status_chnaged %s ",estado, estado_old, status_changed)
-            print(f"estado {estado}, estado_old {estado_old}, status_chnaged {status_changed}")
+            # logger.debug("estado %s, estado_old %s status_chnaged %s ",estado, estado_old, status_changed)
+            # print(f"estado {estado}, estado_old {estado_old}, status_chnaged {status_changed}")
             if status_changed:
-                logger.debug("ENTER callback_bss:")
+                log_payload('NC', 'CHECK_STATUS', 'RESPONSE', str(response.text))
+                logger.debug("estado %s, estado_old %s status_chnaged %s ",estado, estado_old, status_changed)
+                # logger.debug("ENTER callback_bss:")
                 # callback_bss.delay(mnp_request_id, reference_code, session_code_bss, estado, msisdn, response_code, description, error_fields=None, porting_window_date=porting_window_db)
                 callback_bss.delay(mnp_request_id, reference_code, session_code_bss, estado, msisdn, response_code, description, porting_window_db, error_fields=None)
 
@@ -320,12 +324,13 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
                 UPDATE portability_requests 
                 SET response_code = %s,
                 response_status = %s,
+                reject_code = %s,
                 status_nc = %s,
                 description = %s,
                 updated_at = NOW() 
                 WHERE id = %s
             """
-            cursor.execute(update_query, (response_code,estado, status_nc, description,mnp_request_id))
+            cursor.execute(update_query, (response_code,estado, reject_code, status_nc, description,mnp_request_id))
             connection.commit()
             # callback_bss.delay(mnp_request_id, reference_code, session_code, response_code, description, None, None)
             # callback_bss.delay(mnp_request_id, reference_code, session_code, estado, description, None, None)
@@ -336,7 +341,7 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
             if status_changed:
                 logger.debug("ENTER callback_bss:")
                 # callback_bss.delay(mnp_request_id, reference_code, session_code_bss, estado, msisdn, response_code, description=None, error_fields=None, porting_window_date=None)
-                callback_bss.delay(mnp_request_id, reference_code, session_code_bss, estado, msisdn, response_code, description, porting_window_db, error_fields=None)
+                callback_bss.delay(mnp_request_id, reference_code, reject_code, session_code_bss, estado, msisdn, response_code, description, porting_window_db, error_fields=None)
 
             return "Final status received for id: %s, status: %s", mnp_request_id, estado
             
@@ -359,7 +364,7 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
             connection.close()
 
 @app.task(bind=True, max_retries=3)
-def callback_bss(self, mnp_request_id, reference_code, session_code, response_status, msisdn, response_code, description, porting_window_date, error_fields=None):
+def callback_bss(self, mnp_request_id, reference_code, reject_code, session_code, response_status, msisdn, response_code, description, porting_window_date, error_fields=None):
     """
     REST JSON POST to BSS Webhook with updated English field names
     
@@ -369,13 +374,14 @@ def callback_bss(self, mnp_request_id, reference_code, session_code, response_st
         reference_code: codigoreferencia - assigned by NC
         msisdn: Mobile number
         response_code: codigoRespoesta (eg 0000 0000/AREC NRNRE/AREC NRNRE)
+        callback_bss: causaRechazo (RECH_BNUME,RECH_PERDI,RECH_IDENT,RECH_ICCID,RECH TIEMP,RECH_FMAYO)
         response_status: estado (ASOL/APOR/AREC)
         description: Optional description message
         error_fields: Optional list of error field objects
         porting_window_date: Optional porting window date
     """
-    logger.debug("ENTER callback_bss() with request_id %s reference_code %s response_status %s", 
-                 mnp_request_id, reference_code, response_status)
+    logger.debug("ENTER callback_bss() with request_id %s reference_code %s response_status %s reject_code %s", 
+                 mnp_request_id, reference_code, response_status, reject_code)
     
     # Convert datetime to string for JSON payload
     porting_window_str = porting_window_date.isoformat() if porting_window_date else ""
@@ -384,6 +390,7 @@ def callback_bss(self, mnp_request_id, reference_code, session_code, response_st
         "request_id": mnp_request_id,
         "session_code": session_code,
         "reference_code":reference_code,
+        "reject_code":reject_code,
         "msisdn": msisdn,
         "response_code": response_code,
         "response_status": response_status,
@@ -393,7 +400,7 @@ def callback_bss(self, mnp_request_id, reference_code, session_code, response_st
     }
    
     logger.debug("Webhook payload being sent: %s", payload)
-    print(f"Webhook payload being sent: {payload}")
+    # print(f"Webhook payload being sent: {payload}")
     
     try:
         # Send POST request

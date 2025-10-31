@@ -30,9 +30,9 @@ def initiate_session():
         consultar_payload = create_initiate_soap(username, access_code, operator_code)
         
         # Conditional payload logging
-        log_payload('NC', 'INITIATE_SESSION', 'REQUEST', str(consultar_payload))
+        # log_payload('NC', 'INITIATE_SESSION', 'REQUEST', str(consultar_payload))
         headers=settings.get_soap_headers('IniciarSesion'),
-        print("Initiate session headers:", headers)
+        # print("Initiate session headers:", headers)
 
         if not APIGEE_ACCESS_URL:
             raise ValueError("WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS environment variable is not set.")
@@ -41,7 +41,7 @@ def initiate_session():
                                data=consultar_payload,
                                headers=settings.get_soap_headers('IniciarSesion'),
                                timeout=settings.APIGEE_API_QUERY_TIMEOUT)
-        log_payload('NC', 'INITIATE_SESSION', 'RESPONCE', str(response.text))
+        # log_payload('NC', 'INITIATE_SESSION', 'RESPONCE', str(response.text))
 
         result_dict = parse_soap_response_dict_flat(response.text, ["codigoRespuesta", "descripcion", "codigoSesion"])
     
