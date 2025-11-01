@@ -9,7 +9,7 @@ services:
       - ./local-config.yaml:/etc/loki/local-config.yaml
     user: "10001"  # Run as non-root user
     environment:
-      - TZ=UTC
+      TZ: ${TIME_ZONE}
   
   grafana:
     image: grafana/grafana:latest
@@ -17,6 +17,7 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - TZ=${TIME_ZONE}
 
 volumes:
   loki_data:

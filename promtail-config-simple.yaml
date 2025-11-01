@@ -17,16 +17,28 @@ scrape_configs:
           job: mnp-api
           __path__: /var/log/mnp.log
     pipeline_stages:
-      - regex:
-          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>\w+) - (?P<level>\w+) - \[(?P<module>[^:]+):(?P<function>[^:]+):(?P<line>\d+)\] - (?P<message>.+)'
+      - json:
+          expressions:
+            timestamp: timestamp
+            level: level
+            module: module
+            function: funcName
+            line: lineno
+            message: message
+      # - timestamp:
+      #     source: timestamp
+      #     format: '2006-01-02 15:04:05,000'
       - labels:
           level:
           module:
           function:
+      - template:
+          source: new_message
+          template: '[{{ .module }}:{{ .function }}:{{ .line }}] {{ .message }}'
       - output:
-          source: message
+          source: new_message
 
-  - job_name: payload-logs
+  - job_name: mnp-payload-logs
     static_configs:
       - targets:
           - localhost
@@ -35,11 +47,11 @@ scrape_configs:
           __path__: /var/log/payload.log
     pipeline_stages:
       - regex:
-          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>\w+) - (?P<level>\w+) - (?P<service_type>\w+)_(?P<operation>\w+)_(?P<direction>\w+): (?P<message>.+)'
+          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>\w+) - (?P<level>\w+) - (?P<message>.+)'
+      - timestamp:
+          source: timestamp
+          format: '2006-01-02 15:04:05,000'
       - labels:
           level:
-          service_type:
-          operation:
-          direction:
       - output:
           source: message

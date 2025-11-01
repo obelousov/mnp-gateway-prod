@@ -34,7 +34,7 @@ def print_periodic_message():
 @app.task
 def process_pending_requests():
     """Celery Beat task: Check for pending requests that need processing"""
-    logger.info("ENTER process_pending_requests()")
+    logger.debug("ENTER process_pending_requests()")
     try:
         # Get requests that are due for checking
         due_requests = get_due_requests()
@@ -42,7 +42,7 @@ def process_pending_requests():
         if not due_requests:
             message = "No due requests found"
             # logging.info(message)
-            logger.info(message)
+            # logger.debug(message)
             return message
         
         # logging.info("Found %d due requests", len(due_requests))
@@ -53,7 +53,7 @@ def process_pending_requests():
         
         for request in due_requests:
             try:
-                logger.info("Processing Request ID %s", request['id'])
+                logger.info("Processing Request ID %s msisdn %s", request['id'], request['msisdn'])
                 # Process the request asynchronously
                 check_single_request.delay(request['id'], request['status_nc'], 
                                            request['session_code'], request['msisdn'], 
@@ -133,7 +133,7 @@ def get_due_requests():
         pass
     else:
         if not is_working_hours_now():
-            logger.info("Outside working hours, no requests will be processed now.")
+            # logger.debug("Outside working hours, no requests will be processed now.")
             return []
         
     logger.debug("ENTER get_due_requests()")

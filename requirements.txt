@@ -18,3 +18,4 @@ flower
 pydantic
 aiomysql
 prometheus_client
+python-json-logger==2.0.7

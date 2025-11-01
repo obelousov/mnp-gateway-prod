@@ -63,6 +63,7 @@ CREATE TABLE `portability_requests` (
   `status_nc` varchar(50) DEFAULT 'PENDING' COMMENT 'NC system status',
   `response_code` varchar(10) DEFAULT '' COMMENT 'coddigoRespuesta',
   `response_status` varchar(10) DEFAULT '' COMMENT 'Latest response code from NC',
+  `reject_code` varchar(10) DEFAULT '' COMMENT 'reject status eg RECH_BNUME RECH_PERDI RECH_IDENT RECH_ICCID',
   `description` varchar(1000) DEFAULT NULL,
   `retry_count` int(11) DEFAULT 0,
   `last_error` text DEFAULT NULL COMMENT 'Last error message',
@@ -102,7 +103,6 @@ CREATE TABLE `portability_requests` (
   KEY `idx_completion` (`completed_at`,`country_code`),
   KEY `idx_document` (`document_type`,`document_number`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Mobile number portability requests (IN/OUT/CANCEL/MULTISIM)';
-
 
 flower:
 http://localhost:5555/
