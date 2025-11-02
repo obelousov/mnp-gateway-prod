@@ -511,7 +511,8 @@ def json_from_db_to_soap_cancel_online(json_data,session_code):
     """
     Convert JSON data from new table structure to SOAP request
     """
-    logger.debug("ENTER json_from_db_to_soap_cancel_online() %s session_code %s", json_data, session_code)
+    # logger.debug("ENTER json_from_db_to_soap_cancel_online() %s session_code %s", json_data, session_code)
+    logger.debug("ENTER json_from_db_to_soap_cancel_online() session_code %s", session_code)
     # print("Received JSON data:", json_data)
      
     return CANCEL_PORT_IN_REQUEST_TEMPLATE_ONLINE.format(
@@ -539,7 +540,7 @@ def create_initiate_soap(username, access_code,operator_code) -> str:
     Get request data from DB based on mnp_request_idt
     """
     # print ("received mnp_id:", mnp_request_id, session_code, msisdn)
-    logger.info("received username: %s, access_code: %s, operator_code: %s", username, access_code,operator_code)
+    # logger.info("received username: %s, access_code: %s, operator_code: %s", username, access_code,operator_code)
 
     
     return INITIATE_SESSION.format(
@@ -710,7 +711,8 @@ def json_from_db_to_soap_online(json_data, session_code):
     """
     Convert JSON data from new table structure to SOAP request
     """
-    logger.debug("ENTER json_from_db_to_soap_new() %s", json_data)
+    # logger.debug("ENTER json_from_db_to_soap_new() %s", json_data)
+    logger.debug("ENTER json_from_db_to_soap_new()")
     
     def format_date(value):
         if isinstance(value, (date, datetime)):

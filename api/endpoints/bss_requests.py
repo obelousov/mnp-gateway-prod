@@ -555,8 +555,8 @@ async def portin_request(alta_data: PortInRequest):
     """
     start_time = time.time()
     try:
-        logger.info("Processing port-in request")
-        logger.info("subscriber_type: %s", alta_data.subscriber.subscriber_type.value)
+        logger.info("--- Processing port-in request ---")
+        # logger.info("subscriber_type: %s", alta_data.subscriber.subscriber_type.value)
     
         # Convert Pydantic model to dict for existing functions
         alta_data_dict = alta_data.dict()
@@ -1074,7 +1074,7 @@ async def cancel_portability_online(request: CancelPortabilityRequest_online):
         )
     
     try:
-        logger.info("Processing cancellation request for reference: %s",
+        logger.info("--- Processing cancellation request --- for reference: %s",
                    request.reference_code)
         
         # Convert Pydantic model to dict for existing functions

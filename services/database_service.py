@@ -338,7 +338,7 @@ def check_if_cancel_request_id_in_db_online(request_data: dict) -> bool:
             FROM portability_requests 
             WHERE reference_code = %s
         """
-        logger.debug("Executing query to check reference_code: %s", query)
+        # logger.debug("Executing query to check reference_code: %s", query)
         cursor.execute(query, (reference_code.strip(),))
         result = cursor.fetchone()
         

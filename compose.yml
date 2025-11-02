@@ -198,14 +198,19 @@ services:
       
   promtail:
     image: grafana/promtail:latest
+    labels:
+      - "logging=promtail"  # label for identification by promtail
+    network_mode: "host"  # ← Use host network to reach loki on localhost
     volumes:
       - ./logs:/var/log:ro
       - ./promtail-config-simple.yaml:/etc/promtail/config.yaml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock  # ← Required for Docker SD
     command: -config.file=/etc/promtail/config.yaml
     environment:
       - TZ=${TIME_ZONE}
-    networks:
-      - internal-network
+    # networks:
+    #   - internal-network
 
 volumes:
   logs:
