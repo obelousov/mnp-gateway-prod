@@ -85,6 +85,7 @@ def submit_to_central_node(self, mnp_request_id):
         # print(soap_payload)
         # Conditional payload logging
         log_payload('NC', 'PORT_IN', 'REQUEST', str(soap_payload))
+        logger.debug("PORT_IN_REQUEST->NC:\n%s", str(soap_payload))
 
         # 4. Try to send the request to Central Node
         if not WSDL_SERVICE_SPAIN_MOCK:
@@ -106,6 +107,7 @@ def submit_to_central_node(self, mnp_request_id):
 
         # Conditional payload logging
         log_payload('NC', 'PORT_IN', 'RESPONSE', str(response.text))
+        logger.debug("PORT_IN_RESPONSE<-NC:\n%s", str(response.text))
 
         # Assign status based on response_code
         if not response_code or not response_code.strip():
@@ -300,6 +302,7 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
             # print(f"estado {estado}, estado_old {estado_old}, status_chnaged {status_changed}")
             if status_changed:
                 log_payload('NC', 'CHECK_STATUS', 'RESPONSE', str(response.text))
+                logger.debug("STATUS_CHECK_RESPONSE<-NC:\%s", str(response.text))
                 logger.debug("estado %s, estado_old %s status_chnaged %s ",estado, estado_old, status_changed)
                 # logger.debug("ENTER callback_bss:")
                 # callback_bss.delay(mnp_request_id, reference_code, session_code_bss, estado, msisdn, response_code, description, error_fields=None, porting_window_date=porting_window_db)
@@ -601,6 +604,7 @@ def submit_to_central_node_cancel(self, mnp_request_id):
         # print(soap_payload)
         # Conditional payload logging
         log_payload('NC', 'CANCEL', 'REQUEST', str(soap_payload))
+        logger.debug("CANCEL_REQUEST->NC:\n%s", str(soap_payload))
 
         # 4. Try to send the request to Central Node
         if not WSDL_SERVICE_SPAIN_MOCK_CANCEL:
@@ -623,6 +627,7 @@ def submit_to_central_node_cancel(self, mnp_request_id):
 
         # Conditional payload logging
         log_payload('NC', 'CANCEL', 'RESPONSE', str(response.text))
+        logger.debug("CANCEL_RESPONSE<-NC:\n%s", str(response.text))
 # Received response: 
 # response_code=400, description=Campos obligatorios faltantes: fechaSolicitudPorAbonado, codigoOperadorDonante, 
 # codigoOperadorReceptor, codigoContrato, NRNReceptor, MSISDN, reference_code=ERROR_MISSING_FIELDS
@@ -905,6 +910,7 @@ def check_status_port_out(self):
         consultar_payload = create_status_check_port_out_soap_nc(session_code,operator_code, page_count)  # Check status request SOAP
         # Conditional payload logging
         log_payload('NC', 'CHECK_STATUS_PORT_OUT_NC', 'REQUEST', str(consultar_payload))
+        logger.debug("STATUS_CHECK_PORT_OUT_REQUEST->NC:\n%s", str(consultar_payload))
         headers=settings.get_soap_headers('obtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar')
         print("Check status headers:", headers)
 
@@ -918,6 +924,7 @@ def check_status_port_out(self):
         response.raise_for_status()
 
         log_payload('NC', 'CHECK_STATUS_PORT_OUT', 'RESPONSE', str(response.text))
+        logger.debug("STATUS_CHECK_PORT_OUT_RESPONSE<-NC:\n%s", str(response.text))
 
         fields = [
             "codigoRespuesta",                    # Simple field

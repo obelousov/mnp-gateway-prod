@@ -48,9 +48,9 @@ scrape_configs:
     pipeline_stages:
       - regex:
           expression: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>\w+) - (?P<level>\w+) - (?P<message>.+)'
-      - timestamp:
-          source: timestamp
-          format: '2006-01-02 15:04:05,000'
+      # - timestamp:
+      #     source: timestamp
+      #     format: '2006-01-02 15:04:05,000'
       - labels:
           level:
       - output:

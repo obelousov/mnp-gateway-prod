@@ -101,6 +101,7 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         soap_payload = json_from_db_to_soap_online(mnp_request, session_code)
         
         logger.debug("Submit to NC: Generated SOAP Request:")
+        logger.debug("PORT_IN_REQUEST->NC:\n%s", str(soap_payload))
         log_payload('NC', 'PORT_IN', 'REQUEST', str(soap_payload))
 
         # 4. Try to send the request to Central Node
@@ -118,6 +119,7 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         # 5. Parse the SOAP response
         # print("Parsing SOAP response...", response.text)
         log_payload('NC', 'PORT_IN', 'RESPONSE', str(response.text))
+        logger.debug("PORT_IN_RESPONSE<-NC:\n%s", str(response.text))
         
         result = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
         if result and len(result) == 3:
@@ -159,6 +161,7 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         error_msg = f"HTTP Error: {str(e)}"
         if hasattr(e, 'response') and e.response is not None:
             log_payload('NC', 'PORT_IN', 'RESPONSE', str(e.response.text))
+            logger.debug("PORT_IN_RESPONSE<-NC (Error):\n%s", str(e.response.text))
             error_msg += f" - Status: {e.response.status_code}"
         
         # Update database with error
@@ -247,6 +250,7 @@ def submit_to_central_node_cancel_online(mnp_request_id):
         soap_payload = json_from_db_to_soap_cancel_online(mnp_request,session_code)
         # print(soap_payload)
         # Conditional payload logging
+        logger.debug("CANCEL_REQUEST->NC: %s\n", soap_payload)
         log_payload('NC', 'CANCEL', 'REQUEST', str(soap_payload))
 
         # 4. Try to send the request to Central Node
@@ -273,6 +277,7 @@ def submit_to_central_node_cancel_online(mnp_request_id):
 
         # Conditional payload logging
         log_payload('NC', 'CANCEL', 'RESPONSE', str(response.text))
+        logger.debug("CANCEL_RESPONSE<-NC:\n%s", str(response.text))
 # Received response: 
 # response_code=400, description=Campos obligatorios faltantes: fechaSolicitudPorAbonado, codigoOperadorDonante, 
 # codigoOperadorReceptor, codigoContrato, NRNReceptor, MSISDN, reference_code=ERROR_MISSING_FIELDS
@@ -427,6 +432,7 @@ def submit_to_central_node_cancel_online_sync(mnp_request_id: int) -> Tuple[bool
         soap_payload = json_from_db_to_soap_cancel_online(mnp_request, session_code)
         
         logger.debug("Submit Cancellation to NC: Generated SOAP Request")
+        logger.debug("CANCEL_REQUEST->NC:\n%s",str(soap_payload))
         log_payload('NC', 'CANCEL', 'REQUEST', str(soap_payload))
 
         # Send to NC API
@@ -440,6 +446,8 @@ def submit_to_central_node_cancel_online_sync(mnp_request_id: int) -> Tuple[bool
 
         # Parse the SOAP response
         log_payload('NC', 'CANCEL', 'RESPONSE', str(response.text))
+        logger.debug("CANCEL_RESPONSE<-NC:\n%s", str(response.text))
+
         
         # Parse response including campoErroneo
         # response_code, description, campo_erroneo = parse_cancel_soap_response(response.text)
