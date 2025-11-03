@@ -2,7 +2,7 @@ from fastapi import HTTPException
 import mysql.connector
 from mysql.connector import Error
 from config import settings
-from services.time_services import calculate_countdown_working_hours
+from services.time_services import calculate_countdown_working_hours, normalize_datetime
 from datetime import timedelta
 from services.logger import logger, payload_logger, log_payload
 import aiomysql
@@ -496,3 +496,118 @@ def save_portability_request_new(alta_data: dict, request_type: str = 'PORT_IN',
             cursor.close()
         if connection and connection.is_connected():
             connection.close()
+
+def insert_portout_response_to_db(parsed_data):
+    """
+    Inserts parsed Port-Out response data into MySQL tables:
+    - portout_metadata
+    - portout_request
+    using mysql.connector.
+
+    Args:
+        parsed_data (dict): Output of parse_portout_response()
+        db_config (dict): MySQL connection parameters, e.g.
+            {
+                "host": "localhost",
+                "user": "root",
+                "password": "mypassword",
+                "database": "portability_db"
+            }
+    """
+
+    try:
+        # 1. Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        # 2. Insert into portout_metadata
+        meta = parsed_data["response_info"]
+
+        insert_meta_sql = """
+            INSERT INTO portout_metadata
+                (response_code, response_description, paged_request_code,
+                 total_records, is_last_page)
+            VALUES (%s, %s, %s, %s, %s)
+        """
+        meta_values = (
+            meta.get("response_code"),
+            meta.get("response_description"),
+            meta.get("paged_request_code"),
+            meta.get("total_records"),
+            1 if str(meta.get("is_last_page")).lower() in ("true", "1") else 0
+        )
+
+        cursor.execute(insert_meta_sql, meta_values)
+        metadata_id = cursor.lastrowid  # link to requests
+
+        # 3. Insert each port-out request
+        status_nc = 'RECEIVED'
+        status_bss = 'PENDING'
+        insert_req_sql = """
+            INSERT INTO portout_request (
+                metadata_id, notification_id, creation_date, synchronized,
+                reference_code, status, state_date, creation_date_request,
+                reading_mark_date, state_change_deadline, subscriber_request_date,
+                donor_operator_code, receiver_operator_code, extraordinary_donor_activation,
+                contract_code, receiver_NRN, port_window_date, port_window_by_subscriber, MSISDN,
+                subscriber_id_type, subscriber_id_number, subscriber_first_name,
+                subscriber_last_name_1, subscriber_last_name_2, created_at, updated_at, status_nc, status_bss
+            )
+            VALUES (
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, NOW(), NOW(), %s, %s
+            )
+        """
+
+        for req in parsed_data["requests"]:
+            sub = req["subscriber"]
+
+            req_values = (
+                metadata_id,
+                req.get("notification_id"),
+                normalize_datetime(req.get("creation_date")),
+                1 if str(req.get("synchronized")).lower() in ("true", "1") else 0,
+                req.get("reference_code"),
+                req.get("status"),
+                normalize_datetime(req.get("state_date")),
+                normalize_datetime(req.get("creation_date_request")),
+                normalize_datetime(req.get("reading_mark_date")),
+                normalize_datetime(req.get("state_change_deadline")),
+                normalize_datetime(req.get("subscriber_request_date")),
+                req.get("donor_operator_code"),
+                req.get("receiver_operator_code"),
+                1 if str(req.get("extraordinary_donor_activation")).lower() in ("true", "1") else 0,
+                req.get("contract_code"),
+                req.get("receiver_NRN"),
+                normalize_datetime(req.get("port_window_date")),
+                1 if str(req.get("port_window_by_subscriber")).lower() in ("true", "1") else 0,
+                req.get("MSISDN"),
+                sub.get("id_type"),
+                sub.get("id_number"),
+                sub.get("first_name"),
+                sub.get("last_name_1"),
+                sub.get("last_name_2"),
+                status_nc,
+                status_bss
+            )
+            cursor.execute(insert_req_sql, req_values)
+
+        # 44. Commit all inserts
+        connection.commit()
+        print(f"Successfully inserted metadata_id={metadata_id} with {len(parsed_data['requests'])} requests")
+
+    except Error as e:
+        print(f" MySQL Error: {e}")
+        connection.rollback()
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+

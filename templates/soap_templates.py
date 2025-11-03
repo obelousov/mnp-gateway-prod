@@ -146,3 +146,28 @@ CHECK_PORT_OUT_STATUS_TEMPLATE  = """
    </soapenv:Body>
 </soapenv:Envelope>
 """
+
+CANCEL_PORT_OUT_REQUEST  = """
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <por:peticionRechazarSolicitudAltaPortabilidadMovil>
+         <v1:codigoSesion>{session_code}</v1:codigoSesion>
+         <por:codigoReferencia>{reference_code}</por:codigoReferencia>
+         <por:causaEstado>{reject_reason}</por:causaEstado>
+      </por:peticionRechazarSolicitudAltaPortabilidadMovil>
+   </soapenv:Body>
+</soapenv:Envelope>
+"""
+
+ACCEPT_PORT_OUT_REQUEST  = """
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <por:peticionConfirmarSolicitudAltaPortabilidadMovil>
+         <v1:codigoSesion>{session_code}</v1:codigoSesion>
+         <por:codigoReferencia>{reference_code}</por:codigoReferencia>
+      </por:peticionConfirmarSolicitudAltaPortabilidadMovil>
+   </soapenv:Body>
+</soapenv:Envelope>
+"""

@@ -16,7 +16,7 @@ import pytz
 # from db_utils import get_db_connection
 from services.database_service import get_db_connection
 from config import settings
-from services.time_services import calculate_countdown_working_hours
+from services.time_services import calculate_countdown_working_hours, normalize_datetime
 # from services.logger import logger
 from services.logger_simple import log_payload, logger
 from porting.spain_nc import initiate_session
@@ -472,6 +472,119 @@ def callback_bss(self, mnp_request_id, reference_code, reject_code, session_code
         if 'connection' in locals() and connection and connection.is_connected():
             cursor.close()
             connection.close()
+
+@app.task(bind=True, max_retries=3)
+def callback_bss_portout(self,parsed_data):
+    """
+    REST JSON POST to BSS Webhook port-out with updated English field names
+    
+    """
+    meta = parsed_data["response_info"]
+    request_code = meta.get("paged_request_code")
+    logger.debug("ENTER callback_bss_portout() with paged_request_code %s", request_code)
+
+    for req in parsed_data["requests"]:
+        sub = req["subscriber"]
+        notification_id=req.get("notification_id")
+
+        payload = {
+            "notification_id": req.get("notification_id"),
+            "creation_date": normalize_datetime(req.get("creation_date")),
+            "synchronized": 1 if str(req.get("synchronized")).lower() in ("true", "1") else 0,
+            "reference_code": req.get("reference_code"),
+            "status": req.get("status"),
+            "state_date": normalize_datetime(req.get("state_date")),
+            "creation_date_request": normalize_datetime(req.get("creation_date_request")),
+            "reading_mark_date": normalize_datetime(req.get("reading_mark_date")),
+            "state_change_deadline": normalize_datetime(req.get("state_change_deadline")),
+            "subscriber_request_date": normalize_datetime(req.get("subscriber_request_date")),
+            "donor_operator_code": req.get("donor_operator_code"),
+            "receiver_operator_code": req.get("receiver_operator_code"),
+            "extraordinary_donor_activation": 1 if str(req.get("extraordinary_donor_activation")).lower() in ("true", "1") else 0,
+            "contract_code": req.get("contract_code"),
+            "receiver_NRN": req.get("receiver_NRN"),
+            "port_window_date": normalize_datetime(req.get("port_window_date")),
+            "port_window_by_subscriber": 1 if str(req.get("port_window_by_subscriber")).lower() in ("true", "1") else 0,
+            "MSISDN": req.get("MSISDN"),
+            "subscriber": {
+                "id_type": sub.get("id_type"),
+                "id_number": sub.get("id_number"),
+                "first_name": sub.get("first_name"),
+                "last_name_1": sub.get("last_name_1"),
+                "last_name_2": sub.get("last_name_2")
+            }
+        }
+
+        logger.debug("Webhook payload being sent: %s", payload)
+        # print(f"Webhook payload being sent: {payload}")
+        bss_webhook_port_out ="https://webhook.site/74f0037c-8b01-4319-915e-326d6094d45d"
+        
+        try:
+            # Send POST request
+            response = requests.post(
+                # settings.BSS_WEBHOOK_URL,
+                bss_webhook_port_out,
+                json=payload,
+                headers=settings.get_headers_bss(),
+                timeout=settings.APIGEE_API_QUERY_TIMEOUT,
+                verify=settings.SSL_VERIFICATION  # Use SSL verification setting
+            )
+            
+            # Check if request was successful
+            if response.status_code == 200:
+                logger.info(
+                    "Webhook sent successfully for notification_id %s",notification_id
+                )
+
+                # Update database with the actual scheduled time
+                try: 
+                    update_query = """
+                        UPDATE portout_request 
+                        SET status_bss = %s,
+                        updated_at = NOW() 
+                        WHERE notification_id = %s
+                    """
+                    connection = get_db_connection()
+                    cursor = connection.cursor(dictionary=True)
+                    
+                    # Map response_code to appropriate status_bss value
+                    # status_bss="CANCEL_REQUEST_COMPLETED" if response_status=="ACAN" else "NO_RESPONSE_ON CANCEL_RESPONSE"
+                    status_bss = "PORT_OUT_REQUEST_SUBMITTED"
+                    # status_bss = self._map_response_to_status(response_status)
+                    cursor.execute(update_query, (status_bss, notification_id))
+                    connection.commit()
+                    
+                    logger.debug(
+                        "Database updated for notification %s with status_bss: %s", 
+                        notification_id, status_bss
+                    )
+              
+                except Exception as db_error:
+                    logger.error("Database update failed for request %s: %s", mnp_request_id, str(db_error))
+                    return False
+            else:
+                logger.error(
+                    "Webhook failed for notification_id %s", 
+                    notification_id
+                )
+            
+        except requests.exceptions.Timeout as exc:
+            logger.error("Webhook timeout for notification_id %s %s", notification_id, str(exc))
+            self.retry(exc=exc, countdown=120)
+            return False
+        except requests.exceptions.ConnectionError as exc:
+            logger.error("Webhook connection error for notification_id %s %s", notification_id,str(exc))
+            self.retry(exc=exc, countdown=120)
+            return False
+        except requests.exceptions.RequestException as exc:
+            logger.error("Webhook error for notification_id %s %s ", notification_id, str(exc))
+            self.retry(exc=exc, countdown=120)
+            return False
+        finally:
+            if 'connection' in locals() and connection and connection.is_connected():
+                cursor.close()
+                connection.close()
+
 
 def _map_response_to_status(self, response_code):
     """
@@ -946,8 +1059,8 @@ def check_status_port_out(self):
         logger.debug("Received port-out check response: codigoRespuesta=%s, description=%s, codigoPeticionPaginada=%s, totalRegistros=%s ultimaPagina=%s", 
              response_code, description, page_code, total_reg, last_page)
         
-        print("Received port-out check response: codigoRespuesta=%s, description=%s, codigoPeticionPaginada=%s, totalRegistros=%s ultimaPagina=%s" % 
-            (response_code, description, page_code, total_reg, last_page))
+        # print("Received port-out check response: codigoRespuesta=%s, description=%s, codigoPeticionPaginada=%s, totalRegistros=%s ultimaPagina=%s" % 
+        #     (response_code, description, page_code, total_reg, last_page))
 
         # status_nc =""
         request_type = "PORT_OUT"

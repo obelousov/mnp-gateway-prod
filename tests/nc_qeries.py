@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from celery_app import app
 import requests
 import os
@@ -19,7 +19,8 @@ import pytz
 from services.database_service import get_db_connection
 from config import settings
 from services.time_services import calculate_countdown_working_hours
-from services.logger import logger, payload_logger, log_payload
+from services.logger_simple import logger
+from services.logger import log_payload
 
 WSDL_SERVICE_SPAIN_MOCK = settings.WSDL_SERVICE_SPAIN_MOCK
 WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = settings.WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS
@@ -1052,7 +1053,421 @@ def check_status_port_out(session_code):
             cursor.close()
             connection.close()
 
+import xml.etree.ElementTree as ET
+
+import xml.etree.ElementTree as ET
+
+def parse_portout_response(xml_string: str):
+    """
+    Parse SOAP XML with Port-Out notifications and return
+    a structured English-translated response.
+    """
+    # 🧹 Clean XML (remove leading BOM/newlines)
+    xml_string = xml_string.lstrip().replace('\ufeff', '')
+
+    # Parse XML safely
+    root = ET.fromstring(xml_string)
+
+    # Namespace-agnostic search
+    get_text = lambda element, tag: element.findtext(f".//{{*}}{tag}")
+
+    # --- Extract response-level fields ---
+    response_info = {
+        "response_code": get_text(root, "codigoRespuesta"),
+        "response_description": get_text(root, "descripcion"),
+        "paged_request_code": get_text(root, "codigoPeticionPaginada"),
+        "total_records": get_text(root, "totalRegistros"),
+        "is_last_page": get_text(root, "ultimaPagina")
+    }
+
+    # --- Extract all Port-Out requests ---
+    notifications = root.findall(".//{*}notificacion")
+    requests = []
+
+    for notif in notifications:
+        solicitud = notif.find(".//{*}solicitud")
+        if solicitud is None:
+            continue
+
+        # Helper to extract text within solicitud
+        get = lambda tag: solicitud.findtext(f".//{{*}}{tag}")
+
+        # --- Build translated dictionary for each request ---
+        request_data = {
+            "notification_id": get_text(notif, "codigoNotificacion"),
+            "creation_date": get_text(notif, "fechaCreacion"),
+            "synchronized": get_text(notif, "sincronizada"),
+
+            "reference_code": get("codigoReferencia"),
+            "status": get("estado"),
+            "state_date": get("fechaEstado"),
+            "creation_date_request": get("fechaCreacion"),
+            "reading_mark_date": get("fechaMarcaLectura"),
+            "state_change_deadline": get("fechaLimiteCambioEstado"),
+            "subscriber_request_date": get("fechaSolicitudPorAbonado"),
+            "donor_operator_code": get("codigoOperadorDonante"),
+            "receiver_operator_code": get("codigoOperadorReceptor"),
+            "extraordinary_donor_activation": get("operadorDonanteAltaExtraordinaria"),
+            "contract_code": get("codigoContrato"),
+            "receiver_NRN": get("NRNReceptor"),
+            "port_window_date": get("fechaVentanaCambio"),
+            "port_window_by_subscriber": get("fechaVentanaCambioPorAbonado"),
+            "MSISDN": get("MSISDN"),
+
+            # --- Abonado (Subscriber) details ---
+            "subscriber": {
+                "id_type": solicitud.findtext(".//{*}documentoIdentificacion/{*}tipo"),
+                "id_number": solicitud.findtext(".//{*}documentoIdentificacion/{*}documento"),
+                "first_name": solicitud.findtext(".//{*}datosPersonales/{*}nombre"),
+                "last_name_1": solicitud.findtext(".//{*}datosPersonales/{*}primerApellido"),
+                "last_name_2": solicitud.findtext(".//{*}datosPersonales/{*}segundoApellido"),
+            }
+        }
+
+        requests.append(request_data)
+
+    # --- Combine everything into a clean English JSON-like dict ---
+    parsed_result = {
+        "response_info": response_info,
+        "requests": requests
+    }
+
+    return parsed_result
+
+def parse_portout_response_es(xml_string: str):
+    """
+    Parses a SOAP XML response containing Port-Out notifications
+    and returns all response metadata + a list of detailed requests.
+    """
+
+    xml_string = xml_string.lstrip()  # removes any leading newlines or spaces
+    xml_string = xml_string.replace('\ufeff', '')  # removes UTF-8 BOM if present
+    root = ET.fromstring(xml_string)
+
+    # --- Extract global response metadata ---
+    response_meta = {
+        "codigoRespuesta": root.findtext(".//{*}codigoRespuesta"),
+        "descripcion": root.findtext(".//{*}descripcion"),
+        "codigoPeticionPaginada": root.findtext(".//{*}codigoPeticionPaginada"),
+        "totalRegistros": root.findtext(".//{*}totalRegistros"),
+        "ultimaPagina": root.findtext(".//{*}ultimaPagina"),
+    }
+
+    # --- Extract notifications ---
+    notifications = root.findall(".//{*}notificacion")
+    notification_list = []
+
+    for notif in notifications:
+        notif_data: dict[str, Any] = {
+            "fechaCreacion": notif.findtext(".//{*}fechaCreacion"),
+            "sincronizada": notif.findtext(".//{*}sincronizada"),
+            "codigoNotificacion": notif.findtext(".//{*}codigoNotificacion"),
+        }
+
+        solicitud = notif.find(".//{*}solicitud")
+        if solicitud is None:
+            notification_list.append(notif_data)
+            continue
+
+        def get_field(solicitud_elem, tag):
+            return solicitud_elem.findtext(f".//{{*}}{tag}") if solicitud_elem is not None else None
+
+        solicitud_data: dict[str, Union[str, dict[str, str | None], None]] = {
+            "fechaCreacion": get_field(solicitud, "fechaCreacion"),
+            "fechaEstado": get_field(solicitud, "fechaEstado"),
+            "codigoReferencia": get_field(solicitud, "codigoReferencia"),
+            "fechaMarcaLectura": get_field(solicitud, "fechaMarcaLectura"),
+            "estado": get_field(solicitud, "estado"),
+            "fechaLimiteCambioEstado": get_field(solicitud, "fechaLimiteCambioEstado"),
+            "fechaSolicitudPorAbonado": get_field(solicitud, "fechaSolicitudPorAbonado"),
+            "codigoOperadorDonante": get_field(solicitud, "codigoOperadorDonante"),
+            "operadorDonanteAltaExtraordinaria": get_field(solicitud, "operadorDonanteAltaExtraordinaria"),
+            "codigoOperadorReceptor": get_field(solicitud, "codigoOperadorReceptor"),
+            "codigoContrato": get_field(solicitud, "codigoContrato"),
+            "NRNReceptor": get_field(solicitud, "NRNReceptor"),
+            "fechaVentanaCambio": get_field(solicitud, "fechaVentanaCambio"),
+            "fechaVentanaCambioPorAbonado": get_field(solicitud, "fechaVentanaCambioPorAbonado"),
+            "MSISDN": get_field(solicitud, "MSISDN"),
+        }
+
+        # Extract abonado details
+        abonado = solicitud.find(".//{*}abonado")
+        if abonado is not None:
+            solicitud_data["abonado"] = {
+                "tipoDocumento": abonado.findtext(".//{*}documentoIdentificacion/{*}tipo"),
+                "documento": abonado.findtext(".//{*}documentoIdentificacion/{*}documento"),
+                "nombre": abonado.findtext(".//{*}datosPersonales/{*}nombre"),
+                "primerApellido": abonado.findtext(".//{*}datosPersonales/{*}primerApellido"),
+                "segundoApellido": abonado.findtext(".//{*}datosPersonales/{*}segundoApellido"),
+            }
+
+        notif_data["solicitud"] = solicitud_data
+        notification_list.append(notif_data)
+
+    # --- Combine everything ---
+    parsed_data = {
+        "response": response_meta,
+        "notificaciones": notification_list
+    }
+
+    return parsed_data
+    
+# import mysql.connector
+# from mysql.connector import Error
+
+def normalize_datetime(dt_str):
+    """Convert ISO8601 datetime string (e.g. '2025-10-31T17:25:33.038+01:00')
+    into MySQL-compatible format 'YYYY-MM-DD HH:MM:SS'.
+    Returns None if input is invalid or empty."""
+    if not dt_str:
+        return None
+    try:
+        # Parse ISO format (handles timezone and fractional seconds)
+        dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
+    except Exception:
+        # Fallback: try removing +01:00 and milliseconds manually
+        cleaned = dt_str.split('+')[0].split('.')[0].replace('T', ' ')
+        return cleaned
+    
+def insert_portout_response_to_db(parsed_data):
+    """
+    Inserts parsed Port-Out response data into MySQL tables:
+    - portout_metadata
+    - portout_request
+    using mysql.connector.
+
+    Args:
+        parsed_data (dict): Output of parse_portout_response()
+        db_config (dict): MySQL connection parameters, e.g.
+            {
+                "host": "localhost",
+                "user": "root",
+                "password": "mypassword",
+                "database": "portability_db"
+            }
+    """
+
+    try:
+        # 1. Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        # 2. Insert into portout_metadata
+        meta = parsed_data["response_info"]
+
+        insert_meta_sql = """
+            INSERT INTO portout_metadata
+                (response_code, response_description, paged_request_code,
+                 total_records, is_last_page)
+            VALUES (%s, %s, %s, %s, %s)
+        """
+        meta_values = (
+            meta.get("response_code"),
+            meta.get("response_description"),
+            meta.get("paged_request_code"),
+            meta.get("total_records"),
+            1 if str(meta.get("is_last_page")).lower() in ("true", "1") else 0
+        )
+
+        cursor.execute(insert_meta_sql, meta_values)
+        metadata_id = cursor.lastrowid  # link to requests
+
+        # 3. Insert each port-out request
+        status_nc = 'RECEIVED'
+        status_bss = 'PENDING'
+        insert_req_sql = """
+            INSERT INTO portout_request (
+                metadata_id, notification_id, creation_date, synchronized,
+                reference_code, status, state_date, creation_date_request,
+                reading_mark_date, state_change_deadline, subscriber_request_date,
+                donor_operator_code, receiver_operator_code, extraordinary_donor_activation,
+                contract_code, receiver_NRN, port_window_date, port_window_by_subscriber, MSISDN,
+                subscriber_id_type, subscriber_id_number, subscriber_first_name,
+                subscriber_last_name_1, subscriber_last_name_2, created_at, updated_at, status_nc, status_bss
+            )
+            VALUES (
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, NOW(), NOW(), %s, %s
+            )
+        """
+
+        for req in parsed_data["requests"]:
+            sub = req["subscriber"]
+
+            req_values = (
+                metadata_id,
+                req.get("notification_id"),
+                normalize_datetime(req.get("creation_date")),
+                1 if str(req.get("synchronized")).lower() in ("true", "1") else 0,
+                req.get("reference_code"),
+                req.get("status"),
+                normalize_datetime(req.get("state_date")),
+                normalize_datetime(req.get("creation_date_request")),
+                normalize_datetime(req.get("reading_mark_date")),
+                normalize_datetime(req.get("state_change_deadline")),
+                normalize_datetime(req.get("subscriber_request_date")),
+                req.get("donor_operator_code"),
+                req.get("receiver_operator_code"),
+                1 if str(req.get("extraordinary_donor_activation")).lower() in ("true", "1") else 0,
+                req.get("contract_code"),
+                req.get("receiver_NRN"),
+                normalize_datetime(req.get("port_window_date")),
+                1 if str(req.get("port_window_by_subscriber")).lower() in ("true", "1") else 0,
+                req.get("MSISDN"),
+                sub.get("id_type"),
+                sub.get("id_number"),
+                sub.get("first_name"),
+                sub.get("last_name_1"),
+                sub.get("last_name_2"),
+                status_nc,
+                status_bss
+            )
+            cursor.execute(insert_req_sql, req_values)
+
+        # 44. Commit all inserts
+        connection.commit()
+        print(f"Successfully inserted metadata_id={metadata_id} with {len(parsed_data['requests'])} requests")
+
+    except Error as e:
+        print(f" MySQL Error: {e}")
+        connection.rollback()
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+def callback_bss_portout(parsed_data):
+    """
+    REST JSON POST to BSS Webhook port-out with updated English field names
+    
+    """
+    meta = parsed_data["response_info"]
+    request_code = meta.get("paged_request_code")
+    logger.debug("ENTER callback_bss_portout() with paged_request_code %s", request_code)
+
+    for req in parsed_data["requests"]:
+        sub = req["subscriber"]
+        notification_id=req.get("notification_id")
+
+        payload = {
+            "notification_id": req.get("notification_id"),
+            "creation_date": normalize_datetime(req.get("creation_date")),
+            "synchronized": 1 if str(req.get("synchronized")).lower() in ("true", "1") else 0,
+            "reference_code": req.get("reference_code"),
+            "status": req.get("status"),
+            "state_date": normalize_datetime(req.get("state_date")),
+            "creation_date_request": normalize_datetime(req.get("creation_date_request")),
+            "reading_mark_date": normalize_datetime(req.get("reading_mark_date")),
+            "state_change_deadline": normalize_datetime(req.get("state_change_deadline")),
+            "subscriber_request_date": normalize_datetime(req.get("subscriber_request_date")),
+            "donor_operator_code": req.get("donor_operator_code"),
+            "receiver_operator_code": req.get("receiver_operator_code"),
+            "extraordinary_donor_activation": 1 if str(req.get("extraordinary_donor_activation")).lower() in ("true", "1") else 0,
+            "contract_code": req.get("contract_code"),
+            "receiver_NRN": req.get("receiver_NRN"),
+            "port_window_date": normalize_datetime(req.get("port_window_date")),
+            "port_window_by_subscriber": 1 if str(req.get("port_window_by_subscriber")).lower() in ("true", "1") else 0,
+            "MSISDN": req.get("MSISDN"),
+            "subscriber": {
+                "id_type": sub.get("id_type"),
+                "id_number": sub.get("id_number"),
+                "first_name": sub.get("first_name"),
+                "last_name_1": sub.get("last_name_1"),
+                "last_name_2": sub.get("last_name_2")
+            }
+        }
+
+        logger.debug("Webhook payload being sent: %s", payload)
+        # print(f"Webhook payload being sent: {payload}")
+        bss_webhook_port_out ="https://webhook.site/74f0037c-8b01-4319-915e-326d6094d45d"
+        
+        try:
+            # Send POST request
+            response = requests.post(
+                # settings.BSS_WEBHOOK_URL,
+                bss_webhook_port_out,
+                json=payload,
+                headers=settings.get_headers_bss(),
+                timeout=settings.APIGEE_API_QUERY_TIMEOUT,
+                verify=settings.SSL_VERIFICATION  # Use SSL verification setting
+            )
+            
+            # Check if request was successful
+            if response.status_code == 200:
+                logger.info(
+                    "Webhook sent successfully for notification_id %s",notification_id
+                )
+
+                # Update database with the actual scheduled time
+                try: 
+                    update_query = """
+                        UPDATE portout_request 
+                        SET status_bss = %s,
+                        updated_at = NOW() 
+                        WHERE notification_id = %s
+                    """
+                    connection = get_db_connection()
+                    cursor = connection.cursor(dictionary=True)
+                    
+                    # Map response_code to appropriate status_bss value
+                    # status_bss="CANCEL_REQUEST_COMPLETED" if response_status=="ACAN" else "NO_RESPONSE_ON CANCEL_RESPONSE"
+                    status_bss = "PORT_OUT_REQUEST_SUBMITTED"
+                    # status_bss = self._map_response_to_status(response_status)
+                    cursor.execute(update_query, (status_bss, notification_id))
+                    connection.commit()
+                    
+                    logger.debug(
+                        "Database updated for notification %s with status_bss: %s", 
+                        notification_id, status_bss
+                    )
+              
+                except Exception as db_error:
+                    logger.error("Database update failed for request %s: %s", mnp_request_id, str(db_error))
+                    return False
+            else:
+                logger.error(
+                    "Webhook failed for notification_id %s", 
+                    notification_id
+                )
+            
+        except requests.exceptions.Timeout as exc:
+            logger.error("Webhook timeout for notification_id %s %s", notification_id, str(exc))
+            # self.retry(exc=exc, countdown=120)
+            return False
+        except requests.exceptions.ConnectionError as exc:
+            logger.error("Webhook connection error for notification_id %s %s", notification_id,str(exc))
+            # self.retry(exc=exc, countdown=120)
+            return False
+        except requests.exceptions.RequestException as exc:
+            logger.error("Webhook error for notification_id %s %s ", notification_id, str(exc))
+            # self.retry(exc=exc, countdown=120)
+            return False
+        finally:
+            if 'connection' in locals() and connection and connection.is_connected():
+                cursor.close()
+                connection.close()
+
+
 if __name__ == "__main__":
+
+    xml_data = """
+<?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/"><S:Header/><S:Body><ns7:respuestaObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar xmlns:ns17="http://nc.aopm.es/v1-10/extras/fichero" xmlns:ns16="http://nc.aopm.es/v1-10/fichero" xmlns:ns15="http://nc.aopm.es/v1-7/integracion" xmlns:ns14="http://nc.aopm.es/v1-10" xmlns:ns13="http://nc.aopm.es/v1-10/extras/portabilidad" xmlns:ns12="http://nc.aopm.es/v1-10/extras/informe" xmlns:ns11="http://nc.aopm.es/v1-10/extras/incidencia" xmlns:ns10="http://nc.aopm.es/v1-10/extras/buzon" xmlns:ns9="http://nc.aopm.es/v1-10/portabilidad" xmlns:ns8="http://nc.aopm.es/v1-10/administracion" xmlns:ns7="http://nc.aopm.es/v1-10/buzon" xmlns:ns6="http://nc.aopm.es/v1-10/extras/administracion" xmlns:ns5="http://nc.aopm.es/v1-10/incidencia" xmlns:ns4="http://nc.aopm.es/v1-10/acceso" xmlns:ns3="http://nc.aopm.es/v1-10/extras" xmlns:ns2="http://nc.aopm.es/v1-10/boletin"><ns14:codigoRespuesta>0000 00000</ns14:codigoRespuesta><ns14:descripcion>La operación se ha realizado con éxito</ns14:descripcion><ns14:codigoPeticionPaginada>b63653087d60ebca0afd81001dea65e4</ns14:codigoPeticionPaginada><ns14:totalRegistros>2</ns14:totalRegistros><ns14:ultimaPagina>true</ns14:ultimaPagina><ns7:notificacion><ns14:fechaCreacion>2025-10-31T17:25:33.038+01:00</ns14:fechaCreacion><ns14:sincronizada>false</ns14:sincronizada><ns14:codigoNotificacion>431148150</ns14:codigoNotificacion><ns14:solicitud xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns14:SolicitudIndividualAltaPortabilidadMovil"><ns14:fechaCreacion>2025-10-31T17:25:33.038+01:00</ns14:fechaCreacion><ns14:fechaEstado>2025-10-31T17:25:33.038+01:00</ns14:fechaEstado><ns14:codigoReferencia>79829911251031172500401</ns14:codigoReferencia><ns14:fechaMarcaLectura>2025-10-31T17:25:33.038+01:00</ns14:fechaMarcaLectura><ns14:estado>ASOL</ns14:estado><ns14:fechaLimiteCambioEstado>2025-11-03T14:00:00+01:00</ns14:fechaLimiteCambioEstado><ns14:fechaSolicitudPorAbonado>2025-10-31T00:00:00+01:00</ns14:fechaSolicitudPorAbonado><ns14:codigoOperadorDonante>299</ns14:codigoOperadorDonante><ns14:operadorDonanteAltaExtraordinaria>false</ns14:operadorDonanteAltaExtraordinaria><ns14:codigoOperadorReceptor>798</ns14:codigoOperadorReceptor><ns14:abonado><ns14:documentoIdentificacion><ns14:tipo>NIE</ns14:tipo><ns14:documento>Y3037876D</ns14:documento></ns14:documentoIdentificacion><ns14:datosPersonales xsi:type="ns14:DatosPersonalesAbonadoPersonaFisica"><ns14:nombre>Oleg</ns14:nombre><ns14:primerApellido>Cabrerra</ns14:primerApellido><ns14:segundoApellido>Belousov</ns14:segundoApellido></ns14:datosPersonales></ns14:abonado><ns14:codigoContrato>798-TRAC_12</ns14:codigoContrato><ns14:NRNReceptor>704914</ns14:NRNReceptor><ns14:fechaVentanaCambio>2025-11-04T02:00:00+01:00</ns14:fechaVentanaCambio><ns14:fechaVentanaCambioPorAbonado>false</ns14:fechaVentanaCambioPorAbonado><ns14:MSISDN>621800005</ns14:MSISDN></ns14:solicitud></ns7:notificacion><ns7:notificacion><ns14:fechaCreacion>2025-11-03T11:30:10.389+01:00</ns14:fechaCreacion><ns14:sincronizada>false</ns14:sincronizada><ns14:codigoNotificacion>431154450</ns14:codigoNotificacion><ns14:solicitud xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns14:SolicitudIndividualAltaPortabilidadMovil"><ns14:fechaCreacion>2025-11-03T11:30:10.389+01:00</ns14:fechaCreacion><ns14:fechaEstado>2025-11-03T11:30:10.389+01:00</ns14:fechaEstado><ns14:codigoReferencia>79829911251103113000104</ns14:codigoReferencia><ns14:fechaMarcaLectura>2025-11-03T11:30:10.389+01:00</ns14:fechaMarcaLectura><ns14:estado>ASOL</ns14:estado><ns14:fechaLimiteCambioEstado>2025-11-03T20:00:00+01:00</ns14:fechaLimiteCambioEstado><ns14:fechaSolicitudPorAbonado>2025-11-03T00:00:00+01:00</ns14:fechaSolicitudPorAbonado><ns14:codigoOperadorDonante>299</ns14:codigoOperadorDonante><ns14:operadorDonanteAltaExtraordinaria>false</ns14:operadorDonanteAltaExtraordinaria><ns14:codigoOperadorReceptor>798</ns14:codigoOperadorReceptor><ns14:abonado><ns14:documentoIdentificacion><ns14:tipo>NIE</ns14:tipo><ns14:documento>Y3037876D</ns14:documento></ns14:documentoIdentificacion><ns14:datosPersonales xsi:type="ns14:DatosPersonalesAbonadoPersonaFisica"><ns14:nombre>Oleg</ns14:nombre><ns14:primerApellido>Cabrerra</ns14:primerApellido><ns14:segundoApellido>Belousov</ns14:segundoApellido></ns14:datosPersonales></ns14:abonado><ns14:codigoContrato>798-TRAC_15</ns14:codigoContrato><ns14:NRNReceptor>704914</ns14:NRNReceptor><ns14:fechaVentanaCambio>2025-11-05T02:00:00+01:00</ns14:fechaVentanaCambio><ns14:fechaVentanaCambioPorAbonado>false</ns14:fechaVentanaCambioPorAbonado><ns14:MSISDN>621800006</ns14:MSISDN></ns14:solicitud></ns7:notificacion></ns7:respuestaObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar></S:Body></S:Envelope>
+"""
+    parsed = parse_portout_response(xml_data)
+
+    import json
+    print(json.dumps(parsed, indent=2, ensure_ascii=False))
+    insert_portout_response_to_db(parsed)
+    callback_bss_portout(parsed)
+    exit()
 
     xml_data = """
 2025-10-31 19:56:32,200 - mnp_payload - INFO - NC_CANCEL_REQUEST: <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">

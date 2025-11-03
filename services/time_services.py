@@ -515,6 +515,21 @@ def is_working_hours_now(check_time: Optional[datetime] = None) -> bool:
     
     return False
 
+def normalize_datetime(dt_str):
+    """Convert ISO8601 datetime string (e.g. '2025-10-31T17:25:33.038+01:00')
+    into MySQL-compatible format 'YYYY-MM-DD HH:MM:SS'.
+    Returns None if input is invalid or empty."""
+    if not dt_str:
+        return None
+    try:
+        # Parse ISO format (handles timezone and fractional seconds)
+        dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
+    except Exception:
+        # Fallback: try removing +01:00 and milliseconds manually
+        cleaned = dt_str.split('+')[0].split('.')[0].replace('T', ' ')
+        return cleaned
+
 def schedule_task_with_countdown(initial_countdown_seconds):
     """
     Example usage of the calculate_countdown_status function.
