@@ -34,7 +34,9 @@ def print_periodic_message():
 @app.task
 def process_pending_requests():
     """Celery Beat task: Check for pending requests that need processing"""
-    logger.debug("ENTER process_pending_requests()")
+    
+    # check_status_port_out.apply_async()
+
     try:
         # Get requests that are due for checking
         due_requests = get_due_requests()
@@ -112,8 +114,8 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
                 countdown=a_seconds
             )
 
-        if request_type in ["PORT_OUT"]:
-            check_status_port_out.apply_async()
+        # if request_type in ["PORT_OUT"]:
+        #     check_status_port_out.apply_async()
 
 
     except ValueError as e:

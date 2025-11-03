@@ -209,6 +209,7 @@ services:
     command: -config.file=/etc/promtail/config.yaml
     environment:
       - TZ=${TIME_ZONE}
+    restart: unless-stopped  
     # networks:
     #   - internal-network
 

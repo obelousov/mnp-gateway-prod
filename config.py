@@ -113,6 +113,7 @@ class Settings:
     WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = os.getenv('WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS', '')
     WSDL_SERVICE_SPAIN_MOCK_CANCEL = os.getenv('WSDL_SERVICE_SPAIN_MOCK_CANCEL', '')
     BSS_WEBHOOK_URL = os.getenv('BSS_WEBHOOK_URL', '')
+    BSS_WEBHOOK_PORT_OUT_URL = os.getenv('BSS_WEBHOOK_PORT_OUT_URL', '')
     SSL_VERIFICATION = os.getenv('SSL_VERIFICATION', '0').lower() in ('1', 'true', 'yes', 'on')
     
     APIGEE_API_KEY = os.getenv('APIGEE_API_KEY', '')

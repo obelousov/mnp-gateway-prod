@@ -2,6 +2,7 @@
 from celery import Celery # type: ignore
 from dotenv import load_dotenv
 import os
+from config import settings
 
 # Load environment variables from .env file
 load_dotenv()
@@ -9,6 +10,7 @@ load_dotenv()
 # Get Redis URL from environment variables
 redis_url = os.getenv('REDIS_URL', 'redis://redis:6379/0')
 PENDING_REQUESTS_TIMEOUT = float(os.getenv('PENDING_REQUESTS_TIMEOUT', '60.0'))
+TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK = settings.TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK
 
 # Create the Celery instance
 app = Celery('mnp_worker',
@@ -44,9 +46,13 @@ app.conf.beat_schedule = {
     'process-pending-requests-every-60-seconds': {
         # 'task': 'tasks_pending_requests.process_pending_requests',
         'task': 'tasks.pending_requests.process_pending_requests',
-        'schedule': PENDING_REQUESTS_TIMEOUT,  # Every 60 seconds
+        'schedule': PENDING_REQUESTS_TIMEOUT, 
     },
-
+    'process-check-port-out': {
+        # 'task': 'tasks_pending_requests.process_pending_requests',
+        'task': 'tasks.tasks.check_status_port_out',
+        'schedule': TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK, 
+    },
 }
 
 # This allows you to run this module directly for debugging

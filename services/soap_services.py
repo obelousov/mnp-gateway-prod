@@ -825,3 +825,80 @@ def create_status_check_port_out_soap_nc(session_code: str, operator_code: str, 
         operator_code=operator_code,
         page_count=page_count
     )
+import xml.etree.ElementTree as ET
+def parse_portout_response(xml_string: str):
+    """
+    Parse SOAP XML with Port-Out notifications and return
+    a structured English-translated response.
+    """
+    # 🧹 Clean XML (remove leading BOM/newlines)
+    xml_string = xml_string.lstrip().replace('\ufeff', '')
+
+    # Parse XML safely
+    root = ET.fromstring(xml_string)
+
+    # Namespace-agnostic search
+    get_text = lambda element, tag: element.findtext(f".//{{*}}{tag}")
+
+    # --- Extract response-level fields ---
+    response_info = {
+        "response_code": get_text(root, "codigoRespuesta"),
+        "response_description": get_text(root, "descripcion"),
+        "paged_request_code": get_text(root, "codigoPeticionPaginada"),
+        "total_records": get_text(root, "totalRegistros"),
+        "is_last_page": get_text(root, "ultimaPagina")
+    }
+
+    # --- Extract all Port-Out requests ---
+    notifications = root.findall(".//{*}notificacion")
+    requests = []
+
+    for notif in notifications:
+        solicitud = notif.find(".//{*}solicitud")
+        if solicitud is None:
+            continue
+
+        # Helper to extract text within solicitud; bind solicitud into default arg to avoid late-binding capture
+        get = lambda tag, _sol=solicitud: _sol.findtext(f".//{{*}}{tag}")
+
+        # --- Build translated dictionary for each request ---
+        request_data = {
+            "notification_id": get_text(notif, "codigoNotificacion"),
+            "creation_date": get_text(notif, "fechaCreacion"),
+            "synchronized": get_text(notif, "sincronizada"),
+
+            "reference_code": get("codigoReferencia"),
+            "status": get("estado"),
+            "state_date": get("fechaEstado"),
+            "creation_date_request": get("fechaCreacion"),
+            "reading_mark_date": get("fechaMarcaLectura"),
+            "state_change_deadline": get("fechaLimiteCambioEstado"),
+            "subscriber_request_date": get("fechaSolicitudPorAbonado"),
+            "donor_operator_code": get("codigoOperadorDonante"),
+            "receiver_operator_code": get("codigoOperadorReceptor"),
+            "extraordinary_donor_activation": get("operadorDonanteAltaExtraordinaria"),
+            "contract_code": get("codigoContrato"),
+            "receiver_NRN": get("NRNReceptor"),
+            "port_window_date": get("fechaVentanaCambio"),
+            "port_window_by_subscriber": get("fechaVentanaCambioPorAbonado"),
+            "MSISDN": get("MSISDN"),
+
+            # --- Abonado (Subscriber) details ---
+            "subscriber": {
+                "id_type": solicitud.findtext(".//{*}documentoIdentificacion/{*}tipo"),
+                "id_number": solicitud.findtext(".//{*}documentoIdentificacion/{*}documento"),
+                "first_name": solicitud.findtext(".//{*}datosPersonales/{*}nombre"),
+                "last_name_1": solicitud.findtext(".//{*}datosPersonales/{*}primerApellido"),
+                "last_name_2": solicitud.findtext(".//{*}datosPersonales/{*}segundoApellido"),
+            }
+        }
+
+        requests.append(request_data)
+
+    # --- Combine everything into a clean English JSON-like dict ---
+    parsed_result = {
+        "response_info": response_info,
+        "requests": requests
+    }
+
+    return parsed_result

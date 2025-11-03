@@ -506,13 +506,8 @@ def insert_portout_response_to_db(parsed_data):
 
     Args:
         parsed_data (dict): Output of parse_portout_response()
-        db_config (dict): MySQL connection parameters, e.g.
-            {
-                "host": "localhost",
-                "user": "root",
-                "password": "mypassword",
-                "database": "portability_db"
-            }
+
+    Insert each time whne new port-out response is received and total_records > 0    
     """
 
     try:

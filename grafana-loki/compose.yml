@@ -12,6 +12,7 @@ services:
       TZ: ${TIME_ZONE}
     networks:
       - monitoring
+    restart: unless-stopped  
   
   grafana:
     image: grafana/grafana:latest
@@ -24,6 +25,7 @@ services:
       - monitoring
     depends_on:
       - loki  
+    restart: unless-stopped  
 
 volumes:
   loki_data:

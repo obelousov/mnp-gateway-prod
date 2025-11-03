@@ -51,6 +51,8 @@ def submit_to_central_node(self, mnp_request_id):
     """
     logger.debug("ENTER submit_to_central_node with req_id %s", mnp_request_id)
     connection = None
+    cursor = None
+
     try:
         # 1. Get database connection
         connection = get_db_connection()
@@ -189,7 +191,8 @@ def submit_to_central_node(self, mnp_request_id):
             connection.commit()
     finally:
         if connection and connection.is_connected():
-            cursor.close()
+            if cursor:
+                cursor.close()
             connection.close()
 
 @app.task(bind=True, max_retries=3)
@@ -486,12 +489,13 @@ def callback_bss_portout(self,parsed_data):
     for req in parsed_data["requests"]:
         sub = req["subscriber"]
         notification_id=req.get("notification_id")
+        reference_code = req.get("reference_code")
 
         payload = {
             "notification_id": req.get("notification_id"),
             "creation_date": normalize_datetime(req.get("creation_date")),
             "synchronized": 1 if str(req.get("synchronized")).lower() in ("true", "1") else 0,
-            "reference_code": req.get("reference_code"),
+            "reference_code": reference_code,
             "status": req.get("status"),
             "state_date": normalize_datetime(req.get("state_date")),
             "creation_date_request": normalize_datetime(req.get("creation_date_request")),
@@ -515,9 +519,9 @@ def callback_bss_portout(self,parsed_data):
             }
         }
 
-        logger.debug("Webhook payload being sent: %s", payload)
+        logger.debug("callback_bss_portout payload: %s", payload)
         # print(f"Webhook payload being sent: {payload}")
-        bss_webhook_port_out ="https://webhook.site/74f0037c-8b01-4319-915e-326d6094d45d"
+        bss_webhook_port_out =settings.BSS_WEBHOOK_PORT_OUT_URL
         
         try:
             # Send POST request
@@ -533,7 +537,7 @@ def callback_bss_portout(self,parsed_data):
             # Check if request was successful
             if response.status_code == 200:
                 logger.info(
-                    "Webhook sent successfully for notification_id %s",notification_id
+                    "Webhook sent successfully for reference_code %s",callback_bss_portout
                 )
 
                 # Update database with the actual scheduled time
@@ -542,7 +546,7 @@ def callback_bss_portout(self,parsed_data):
                         UPDATE portout_request 
                         SET status_bss = %s,
                         updated_at = NOW() 
-                        WHERE notification_id = %s
+                        WHERE reference_code = %s
                     """
                     connection = get_db_connection()
                     cursor = connection.cursor(dictionary=True)
@@ -551,33 +555,33 @@ def callback_bss_portout(self,parsed_data):
                     # status_bss="CANCEL_REQUEST_COMPLETED" if response_status=="ACAN" else "NO_RESPONSE_ON CANCEL_RESPONSE"
                     status_bss = "PORT_OUT_REQUEST_SUBMITTED"
                     # status_bss = self._map_response_to_status(response_status)
-                    cursor.execute(update_query, (status_bss, notification_id))
+                    cursor.execute(update_query, (status_bss, reference_code))
                     connection.commit()
                     
                     logger.debug(
-                        "Database updated for notification %s with status_bss: %s", 
-                        notification_id, status_bss
+                        "Database updated for reference_code %s with status_bss: %s", 
+                        reference_code, status_bss
                     )
               
                 except Exception as db_error:
-                    logger.error("Database update failed for request %s: %s", mnp_request_id, str(db_error))
+                    logger.error("Database update failed for reference_code %s: %s", reference_code, str(db_error))
                     return False
             else:
                 logger.error(
-                    "Webhook failed for notification_id %s", 
-                    notification_id
+                    "Webhook failed for reference_code %s", 
+                    reference_code
                 )
             
         except requests.exceptions.Timeout as exc:
-            logger.error("Webhook timeout for notification_id %s %s", notification_id, str(exc))
+            logger.error("Webhook timeout for reference_code %s %s", reference_code, str(exc))
             self.retry(exc=exc, countdown=120)
             return False
         except requests.exceptions.ConnectionError as exc:
-            logger.error("Webhook connection error for notification_id %s %s", notification_id,str(exc))
+            logger.error("Webhook connection error for reference_code %s %s", reference_code,str(exc))
             self.retry(exc=exc, countdown=120)
             return False
         except requests.exceptions.RequestException as exc:
-            logger.error("Webhook error for notification_id %s %s ", notification_id, str(exc))
+            logger.error("Webhook error for reference_code %s %s ", reference_code, str(exc))
             self.retry(exc=exc, countdown=120)
             return False
         finally:
@@ -991,7 +995,7 @@ def submit_to_central_node_task(self, mnp_request_id: int) -> Tuple[bool, Option
 
 from services.soap_services import create_status_check_port_out_soap_nc
 @app.task(bind=True, max_retries=3)
-def check_status_port_out(self):
+def check_status_port_out_1(self):
     """
     Task to check the status of port-out requests at the Central Node.
     """
@@ -1092,4 +1096,91 @@ def check_status_port_out(self):
     finally:
         if connection and connection.is_connected():
             cursor.close()
+            connection.close()
+
+from services.soap_services import parse_portout_response
+from services.database_service import insert_portout_response_to_db
+@app.task(bind=True, max_retries=3)
+def check_status_port_out(self):
+    """
+    Task to check the status of port-out requests at the Central Node.
+    """
+    session_code = initiate_session()
+
+    if not session_code:
+        logger.error("Failed to initiate session for port_out check")
+        return False, "SESSION_ERROR", "Failed to initiate session"
+
+    logger.info("ENTER check_status_port_out() with session_code %s ", session_code)
+    # APIGEE_PORTABILITY_URL=settings.APIGEE_PORTABILITY_URL
+    APIGEE_PORT_OUT_URL=settings.APIGEE_PORT_OUT_URL
+    operator_code=settings.APIGEE_OPERATOR_CODE
+    page_count=settings.PAGE_COUNT_PORT_OUT
+
+    connection = None
+
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+          
+        consultar_payload = create_status_check_port_out_soap_nc(session_code,operator_code, page_count)  # Check status request SOAP
+        # Conditional payload logging
+        # log_payload('NC', 'CHECK_STATUS_PORT_OUT_NC', 'REQUEST', str(consultar_payload))
+        # logger.debug("STATUS_CHECK_PORT_OUT_REQUEST->NC:\n%s", str(consultar_payload))
+        # headers=settings.get_soap_headers('obtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar')
+        # print("Check status headers:", headers)
+
+        if not APIGEE_PORT_OUT_URL:
+            raise ValueError("APIGEE_PORT_OUT_URL environment variable is not set.")
+        
+        response = requests.post(APIGEE_PORT_OUT_URL,
+                               data=consultar_payload,
+                               headers=settings.get_soap_headers('obtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar'),
+                               timeout=settings.APIGEE_API_QUERY_TIMEOUT)
+        response.raise_for_status()
+
+        # log_payload('NC', 'CHECK_STATUS_PORT_OUT', 'RESPONSE', str(response.text))
+        # logger.debug("STATUS_CHECK_PORT_OUT_RESPONSE<-NC:\n%s", str(response.text))
+
+        parsed = parse_portout_response(response.text)
+        meta = parsed["response_info"]
+        total_records=int(meta.get("total_records"))
+       
+        if total_records > 0:
+            log_payload('NC', 'CHECK_STATUS_PORT_OUT_NC', 'REQUEST', str(consultar_payload))
+            logger.debug("STATUS_CHECK_PORT_OUT_REQUEST->NC:\n%s", str(consultar_payload))
+
+            log_payload('NC', 'CHECK_STATUS_PORT_OUT', 'RESPONSE', str(response.text))
+            logger.debug("STATUS_CHECK_PORT_OUT_RESPONSE<-NC total records %s:\n%s", total_records,str(response.text))
+            insert_portout_response_to_db(parsed)
+            callback_bss_portout.delay(parsed)
+
+        # _, _, scheduled_datetime = calculate_countdown_working_hours(
+        #                                                 delta=settings.TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK, 
+        #                                                 with_jitter=True
+        #                                                                             )
+        # # Update database with the actual scheduled time
+        # update_query = """
+        #         UPDATE portability_requests 
+        #         SET response_code= %s,
+        #         description = %s,
+        #         reference_code = %s,
+        #         session_code = %s,
+        #         scheduled_at = %s,
+        #         updated_at = NOW() 
+        #         WHERE request_type = %s
+        #     """
+        # cursor.execute(update_query, (response_code,description, page_code, session_code, scheduled_datetime, request_type))
+        # connection.commit()
+
+    except requests.exceptions.RequestException as exc:
+        print(f"Status check failed, retrying: {exc}")
+        self.retry(exc=exc, countdown=120)
+    except Error as e:
+        print(f"Database error during status check: {e}")
+        self.retry(exc=e, countdown=30)
+    finally:
+        if connection and connection.is_connected():
+            if cursor:
+                cursor.close()
             connection.close()

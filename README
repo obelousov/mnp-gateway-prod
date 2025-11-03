@@ -20,6 +20,9 @@ adminer
 root:root
 http://localhost:8060/?server=db&username=pondphone&db=mnp_database
 
+grafana
+http://localhost:3000/login
+
 traefik dashboard
 http://localhost:8080/dashboard/
 http://localhost:8080/dashboard/#/http/routers
