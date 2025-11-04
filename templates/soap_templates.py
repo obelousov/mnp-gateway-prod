@@ -147,7 +147,7 @@ CHECK_PORT_OUT_STATUS_TEMPLATE  = """
 </soapenv:Envelope>
 """
 
-CANCEL_PORT_OUT_REQUEST  = """
+REJECT_PORT_OUT_REQUEST  = """
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
    <soapenv:Header/>
    <soapenv:Body>
@@ -160,7 +160,7 @@ CANCEL_PORT_OUT_REQUEST  = """
 </soapenv:Envelope>
 """
 
-ACCEPT_PORT_OUT_REQUEST  = """
+CONFIRM_PORT_OUT_REQUEST  = """
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
    <soapenv:Header/>
    <soapenv:Body>

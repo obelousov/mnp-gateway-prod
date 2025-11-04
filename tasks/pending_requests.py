@@ -139,6 +139,7 @@ def get_due_requests():
             return []
         
     logger.debug("ENTER get_due_requests()")
+        # OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_OUT%')
     query = """
     SELECT id, status_nc, session_code, msisdn, response_status, status_bss, reference_code, request_type
     FROM portability_requests 
@@ -147,7 +148,6 @@ def get_due_requests():
         OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%REQUEST_RESPONDED%')
         OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_IN%')
         OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%SUBMITTED%')
-        OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_OUT%')
     )
     AND (scheduled_at IS NULL OR scheduled_at <= NOW())
     AND UPPER(request_type) IN ('CANCELLATION', 'PORT_IN','PORT_OUT')

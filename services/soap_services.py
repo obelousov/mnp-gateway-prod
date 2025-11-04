@@ -11,6 +11,7 @@ from templates.soap_templates import PORTABILITY_REQUEST_TEMPLATE, CHECK_PORT_IN
 # from config import logger
 from services.logger import logger, payload_logger, log_payload
 from datetime import date, datetime
+from templates.soap_templates import REJECT_PORT_OUT_REQUEST
 
 
 # Namespace definitions
@@ -902,3 +903,15 @@ def parse_portout_response(xml_string: str):
     }
 
     return parsed_result
+
+def soap_port_out_reject(session_code, reference_code, cancellation_reason):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER soap_port_out_reject() reference_code %s", reference_code)
+     
+    return REJECT_PORT_OUT_REQUEST.format(
+        session_code=session_code,
+        reference_code=reference_code,
+        reject_reason=cancellation_reason
+    )

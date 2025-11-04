@@ -480,10 +480,224 @@ def submit_to_central_node_cancel_online_sync(mnp_request_id: int) -> Tuple[bool
             cursor.execute(update_query, ('ERROR', error_msg, mnp_request_id))
             connection.commit()
         
-        return False, "PROCESSING_ERROR", error_msg, None
+        return False, "PROCESSING_ERROR", error_msg
         
     finally:
         if cursor:
             cursor.close()
         if connection and connection.is_connected():
             connection.close()
+
+from services.soap_services import soap_port_out_reject
+from typing import Tuple, Optional
+import requests
+import logging
+
+logger = logging.getLogger(__name__)
+
+def submit_to_central_node_port_out_reject_new(alta_data: dict) -> Tuple[bool, Optional[str], Optional[str]]:
+    """
+    Submit Port-Out rejection synchronously to the Central Node.
+    Returns (success, response_code, description).
+    """
+
+    reference_code = alta_data.get("reference_code")
+    cancellation_reason = alta_data.get("cancellation_reason")
+    logger.debug("ENTER submit_to_central_node_port_out_reject with reference_code=%s", reference_code)
+
+    connection = None
+    cursor = None
+
+    try:
+        # --- Connect to DB ---
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        # --- Fetch the Port-Out request record ---
+        cursor.execute("SELECT * FROM portout_request WHERE reference_code = %s", (reference_code,))
+        mnp_request = cursor.fetchone()
+
+        if not mnp_request:
+            logger.error("Port-Out request %s not found", reference_code)
+            return False, "NOT_FOUND", f"Port-Out request {reference_code} not found"
+
+        # --- Start session ---
+        session_code = initiate_session()
+        logger.debug("Generated session_code: %s", session_code)
+
+        # --- Build SOAP payload ---
+        soap_payload = soap_port_out_reject(session_code, reference_code, cancellation_reason)
+        logger.debug("SOAP Request Payload:\n%s", soap_payload)
+        log_payload('NC', 'REJECT_PORT_OUT', 'REQUEST', soap_payload)
+
+        # --- Send SOAP request ---
+        response = requests.post(
+            settings.APIGEE_PORTABILITY_URL,
+            data=soap_payload,
+            headers=settings.get_soap_headers('peticionRechazarSolicitudAltaPortabilidadMovil'),
+            timeout=settings.APIGEE_API_QUERY_TIMEOUT
+        )
+
+        response.raise_for_status()
+
+        # --- Parse SOAP response ---
+        log_payload('NC', 'REJECT_PORT_OUT', 'RESPONSE', response.text)
+        logger.debug("SOAP Response:\n%s", response.text)
+
+        result = parse_soap_response_dict(response.text, ["codigoRespuesta", "descripcion"])
+        response_code = result.get("codigoRespuesta")
+        description = result.get("descripcion")
+
+        logger.debug("Response parsed: codigoRespuesta=%s, descripcion=%s", response_code, description)
+
+        # --- Determine success ---
+        success = (response_code or "").strip() in ("0000", "00000", "0000 00000")
+
+        # --- Update database record ---
+        status_bss = 'RECEIVED_PORT_OUT_REJECT'
+        status_nc = f"STATUS_UPDATED_TO_{response_code}"
+
+        update_query = """
+            UPDATE portout_request 
+            SET status_nc = %s,
+                status_bss = %s,
+                response_code = %s,
+                description = %s,
+                updated_at = NOW()
+            WHERE reference_code = %s
+        """
+        cursor.execute(update_query, (status_nc, status_bss, response_code, description, reference_code))
+        connection.commit()
+
+        return success, response_code, description
+
+    except Exception as e:
+        logger.error("Error in submit_to_central_node_port_out_reject: %s", e)
+        error_msg = str(e)
+
+        # --- Try to update error state in DB ---
+        try:
+            if connection and connection.is_connected():
+                cursor = connection.cursor()
+                cursor.execute(
+                    """
+                    UPDATE portout_request 
+                    SET status_nc = %s,
+                        description = %s,
+                        updated_at = NOW()
+                    WHERE reference_code = %s
+                    """,
+                    ('ERROR', error_msg, reference_code)
+                )
+                connection.commit()
+        except Exception as inner_e:
+            logger.error("Failed to update error status in DB: %s", inner_e)
+
+        return False, "PROCESSING_ERROR", error_msg
+
+    finally:
+        # --- Cleanup ---
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+def submit_to_central_node_port_out_reject(alta_data: dict) -> Tuple[bool, Optional[str], Optional[str]]:
+    """
+    Synchronous version to submit cancellation and return immediate response
+    """
+    reference_code = alta_data.get("reference_code")
+    cancellation_reason = alta_data.get("cancellation_reason")
+    logger.debug("ENTER submit_to_central_node_port_out_reject with refeernce_code %s", reference_code)
+    
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        # Get request data
+        cursor.execute("SELECT * FROM portout_request WHERE reference_code = %s", (reference_code,))
+        mnp_request = cursor.fetchone()
+        cursor.fetchall()  # ⬅️ CONSUME REMAINING RESULTS
+        
+        if not mnp_request:
+            logger.error("Port-Out request %s not found", reference_code)
+            return False, "NOT_FOUND", f"Port-Out request {reference_code} not found"
+        
+        # Get session code
+        session_code = initiate_session()
+        print("------ session_code: ------ ",session_code)
+        
+        # Generate SOAP payload
+        soap_payload = soap_port_out_reject(session_code, reference_code, cancellation_reason)
+        print("------ soap_payload: ------ ",soap_payload)
+
+        # logger.debug("Reject Port-Out request to NC: Generated SOAP Request")
+        logger.debug("REJECT_PORT_OUT->NC:\n%s",str(soap_payload))
+        log_payload('NC', 'REJECT_PORT_OUT', 'REQUEST', str(soap_payload))
+
+        # Send to NC API
+        response = requests.post(
+            settings.APIGEE_PORTABILITY_URL,
+            data=soap_payload,
+            headers=settings.get_soap_headers('peticionRechazarSolicitudAltaPortabilidadMovil'),
+            timeout=settings.APIGEE_API_QUERY_TIMEOUT
+        )
+        response.raise_for_status()
+
+        # Parse the SOAP response
+        log_payload('NC', 'REJECT_PORT_OUT', 'RESPONSE', str(response.text))
+        logger.debug("REJECT_PORT_OUT<-NC:\n%s", str(response.text))
+
+        
+        # Parse response including campoErroneo
+        # response_code, description, campo_erroneo = parse_cancel_soap_response(response.text)
+        # response_code, description, reference_code = parse_soap_response_dict(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+        result = parse_soap_response_dict(response.text,["codigoRespuesta", "descripcion"])
+
+        response_code = result['codigoRespuesta']
+        description = result['descripcion']
+
+        logger.debug("Port-Out Reject to NC: Received response: response_code=%s, description=%s", response_code, description)
+        # Determine success
+        success = (response_code == "0000 00000")
+        
+        # Update database
+        status_bss = 'RECEIVED_PORT_OUT_REJECT'
+        status_nc = f"STATUS_UPDATED_TO_{response_code}"
+        update_query = """
+            UPDATE portout_request 
+            SET status_nc = %s, status_bss = %s, response_code = %s, 
+                description = %s, updated_at = NOW()
+            WHERE reference_code = %s
+        """
+        # logger.debug("UPDATE portout_request SET status_nc = %s, status_bss = %s, response_code = %s, description = %s WHERE reference_code = %s", 
+        #      status_nc, status_bss, response_code, description, reference_code)
+        cursor.execute(update_query, (status_nc, status_bss, response_code, description, reference_code))
+        connection.commit()
+
+        return success, response_code, description
+
+    except Exception as e:
+        logger.error("Error in submit_to_central_node_port_out_reject: %s", e)  # Correct function name
+        error_msg = f"Error: {str(e)}"
+        
+        if cursor and connection:
+            # update_query = "UPDATE portout_request SET status_nc = %s, description = %s WHERE id = %s"
+            update_query = "UPDATE portout_request SET status_nc = %s, description = %s WHERE reference_code = %s"
+            cursor.execute(update_query, ('ERROR', error_msg, reference_code))
+            connection.commit()
+        
+        return False, "PROCESSING_ERROR", error_msg
+        
+    finally:
+        if cursor:
+            cursor.close()
+            # try:
+            #     cursor.fetchall()  # ⬅️ ADD THIS LINE
+            # except:
+            #     pass
+        if connection and connection.is_connected():
+            connection.close()
+            

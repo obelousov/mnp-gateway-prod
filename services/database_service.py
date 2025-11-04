@@ -606,3 +606,128 @@ def insert_portout_response_to_db(parsed_data):
         if connection and connection.is_connected():
             connection.close()
 
+# def check_if_cancel_request_id is presnt id db:
+def check_if_port_out_request_in_db_1(request_data: dict) -> bool:
+    """
+    Check if Port-Out request present in database (synchronous)
+    Returns True if found, False if not found
+    """
+    logger.debug("ENTER check_if_port_out_request_in_db() with data: %s", request_data)
+    reference_code = request_data["reference_code"]
+    logger.debug("ENTER check_if_port_out_request_in_db() %s",reference_code)
+    
+    # Enhanced validation with better error messages
+    if not request_data:
+        raise ValueError("Request data is empty or None")
+    
+    required_fields = ["reference_code"]
+    missing_fields = [field for field in required_fields if field not in request_data or not request_data[field]]
+    
+    if missing_fields:
+        raise ValueError(f"Missing required field(s): {', '.join(missing_fields)}. Received data: {request_data}")
+    
+    # Get the first request from the list
+    first_request = request_data["requests"][0]
+    
+    # Now get reference_code from the nested request object
+    reference_code = first_request.get("reference_code")
+    
+    if not reference_code:
+        logger.error("reference_code not found in nested request object")
+        return False
+    
+    logger.debug("Found reference_code: %s", reference_code)
+
+    connection = None
+    cursor = None
+    try:
+        # Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # reference_code = request_data["reference_code"]
+        
+        # Validate reference_code is not empty
+        if not reference_code or not reference_code.strip():
+            logger.error("Reference code is empty or whitespace")
+            return False
+        
+        # Query to check if the ID exists in portability_requests table
+        query = """
+            SELECT COUNT(*) as count 
+            FROM portout_request 
+            WHERE reference_code = %s
+        """
+        # logger.debug("Executing query to check reference_code: %s", query)
+        cursor.execute(query, (reference_code.strip(),))
+        result = cursor.fetchone()
+        
+        # Access tuple by index (COUNT(*) is first column)
+        exists = result[0] > 0 if result else False
+        
+        logger.debug("Reference code '%s' exists in portout_request table: %s", reference_code, exists)
+        return exists
+        
+    except Exception as e:
+        logger.error("Error checking reference_code '%s' in portout_requestB: %s", 
+                    request_data.get("reference_code"), str(e))
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+def check_if_port_out_request_in_db(request_data: dict) -> bool:
+    """
+    Check if a Port-Out request is present in the database.
+    Accepts either:
+        {"reference_code": "..."}  OR
+        {"requests": [{"reference_code": "..."}]}
+    Returns True if found, False otherwise.
+    """
+    logger.debug("ENTER check_if_port_out_request_in_db() with data: %s", request_data)
+
+    if not request_data:
+        raise ValueError("Invalid input: request_data is empty or None")
+
+    # Determine where to extract reference_code from
+    if "reference_code" in request_data:
+        reference_code = request_data.get("reference_code")
+    elif "requests" in request_data and request_data["requests"]:
+        reference_code = request_data["requests"][0].get("reference_code")
+    else:
+        raise ValueError("Missing required field: reference_code")
+
+    if not reference_code or not reference_code.strip():
+        raise ValueError("reference_code is empty or invalid")
+
+    logger.debug("Checking reference_code: %s", reference_code)
+
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        query = """
+            SELECT COUNT(*) 
+            FROM portout_request 
+            WHERE reference_code = %s
+        """
+        cursor.execute(query, (reference_code.strip(),))
+        result = cursor.fetchone()
+        exists = (result[0] if result else 0) > 0
+
+        logger.debug("Reference code '%s' exists in portout_request: %s", reference_code, exists)
+        return exists
+
+    except Exception as e:
+        logger.error("Error checking reference_code '%s' in portout_request: %s", reference_code, str(e))
+        return False
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()

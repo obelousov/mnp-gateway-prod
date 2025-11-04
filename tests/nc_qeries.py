@@ -1455,8 +1455,60 @@ def callback_bss_portout(parsed_data):
                 cursor.close()
                 connection.close()
 
+import xml.etree.ElementTree as ET
+
+def parse_soap_response_dict_new(xml_data: str, tags: list[str]) -> dict:
+    """
+    Parse a SOAP XML string and extract values for the given tag names,
+    ignoring XML namespaces.
+
+    Args:
+        xml_data (str): The SOAP XML string
+        tags (list[str]): List of tag names to extract
+
+    Returns:
+        dict: { tag_name: value or None }
+    """
+    # Remove namespace prefixes for simpler searching
+    def strip_namespace(tag: str) -> str:
+        if '}' in tag:
+            return tag.split('}', 1)[1]
+        return tag
+
+    result = {tag: None for tag in tags}
+
+    try:
+        root = ET.fromstring(xml_data)
+
+        # Walk the entire tree
+        for elem in root.iter():
+            clean_tag = strip_namespace(elem.tag)
+            if clean_tag in tags:
+                result[clean_tag] = (elem.text or '').strip()
+
+    except ET.ParseError as e:
+        print(f"XML Parse Error: {e}")
+
+    return result
+
 
 if __name__ == "__main__":
+
+#     xml_data = """<?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S=\"http://schemas.xmlsoap.org/soap/envelope/\"><S:Header/><S:Body><ns14:respuestaRechazarSolicitudAltaPortabilidadMovil xmlns:ns17=\"http://nc.aopm.es/v1-10/extras/fichero\" xmlns:ns16=\"http://nc.aopm.es/v1-10/fichero\" xmlns:ns15=\"http://nc.aopm.es/v1-7/integracion\" xmlns:ns14=\"http://nc.aopm.es/v1-10/portabilidad\" xmlns:ns13=\"http://nc.aopm.es/v1-10/extras/portabilidad\" xmlns:ns12=\"http://nc.aopm.es/v1-10/extras/informe\" xmlns:ns11=\"http://nc.aopm.es/v1-10/extras/incidencia\" xmlns:ns10=\"http://nc.aopm.es/v1-10/extras/buzon\" xmlns:ns9=\"http://nc.aopm.es/v1-10/administracion\" xmlns:ns8=\"http://nc.aopm.es/v1-10/buzon\" xmlns:ns7=\"http://nc.aopm.es/v1-10/extras/administracion\" xmlns:ns6=\"http://nc.aopm.es/v1-10/incidencia\" xmlns:ns5=\"http://nc.aopm.es/v1-10/acceso\" xmlns:ns4=\"http://nc.aopm.es/v1-10/extras\" xmlns:ns3=\"http://nc.aopm.es/v1-10/boletin\" xmlns:ns2=\"http://nc.aopm.es/v1-10\"><ns2:codigoRespuesta>RECH TIEMP</ns2:codigoRespuesta><ns2:descripcion>\u00danicamente se puede rechazar la solicitud de alta de portabilidad m\u00f3vil durante el per\u00edodo Tv. Tv Inicio: 04/11/2025 14:00:00, Tv Fin: 04/11/2025 20:00:00.</ns2:descripcion></ns14:respuestaRechazarSolicitudAltaPortabilidadMovil></S:Body></S:Envelope>
+# """
+#     # response_code, description, reference_code = parse_soap_response_list(xml_data, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+#     result = parse_soap_response_dict(xml_data,["codigoRespuesta", "descripcion", "codigoReferencia"])
+
+#     # print(f"Response Code: {response_code}")
+#     # print(f"Description: {description}")
+#     # print(f"Reference Code: {reference_code}")
+#     print(f"NC Response Code: {result['codigoRespuesta']}")
+#     print(f"NC Description: {result['descripcion']}")
+#     print(f"NC codigoReferencia: {result['codigoReferencia']}")
+#     # print(f"NC totalRegistros: {result['totalRegistros']}")
+#     # print(f"NC ultimaPagina: {result['ultimaPagina']}")
+
+#     exit()
 
     xml_data = """
 <?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/"><S:Header/><S:Body><ns7:respuestaObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar xmlns:ns17="http://nc.aopm.es/v1-10/extras/fichero" xmlns:ns16="http://nc.aopm.es/v1-10/fichero" xmlns:ns15="http://nc.aopm.es/v1-7/integracion" xmlns:ns14="http://nc.aopm.es/v1-10" xmlns:ns13="http://nc.aopm.es/v1-10/extras/portabilidad" xmlns:ns12="http://nc.aopm.es/v1-10/extras/informe" xmlns:ns11="http://nc.aopm.es/v1-10/extras/incidencia" xmlns:ns10="http://nc.aopm.es/v1-10/extras/buzon" xmlns:ns9="http://nc.aopm.es/v1-10/portabilidad" xmlns:ns8="http://nc.aopm.es/v1-10/administracion" xmlns:ns7="http://nc.aopm.es/v1-10/buzon" xmlns:ns6="http://nc.aopm.es/v1-10/extras/administracion" xmlns:ns5="http://nc.aopm.es/v1-10/incidencia" xmlns:ns4="http://nc.aopm.es/v1-10/acceso" xmlns:ns3="http://nc.aopm.es/v1-10/extras" xmlns:ns2="http://nc.aopm.es/v1-10/boletin"><ns14:codigoRespuesta>0000 00000</ns14:codigoRespuesta><ns14:descripcion>La operación se ha realizado con éxito</ns14:descripcion><ns14:codigoPeticionPaginada>b63653087d60ebca0afd81001dea65e4</ns14:codigoPeticionPaginada><ns14:totalRegistros>2</ns14:totalRegistros><ns14:ultimaPagina>true</ns14:ultimaPagina><ns7:notificacion><ns14:fechaCreacion>2025-10-31T17:25:33.038+01:00</ns14:fechaCreacion><ns14:sincronizada>false</ns14:sincronizada><ns14:codigoNotificacion>431148150</ns14:codigoNotificacion><ns14:solicitud xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns14:SolicitudIndividualAltaPortabilidadMovil"><ns14:fechaCreacion>2025-10-31T17:25:33.038+01:00</ns14:fechaCreacion><ns14:fechaEstado>2025-10-31T17:25:33.038+01:00</ns14:fechaEstado><ns14:codigoReferencia>79829911251031172500401</ns14:codigoReferencia><ns14:fechaMarcaLectura>2025-10-31T17:25:33.038+01:00</ns14:fechaMarcaLectura><ns14:estado>ASOL</ns14:estado><ns14:fechaLimiteCambioEstado>2025-11-03T14:00:00+01:00</ns14:fechaLimiteCambioEstado><ns14:fechaSolicitudPorAbonado>2025-10-31T00:00:00+01:00</ns14:fechaSolicitudPorAbonado><ns14:codigoOperadorDonante>299</ns14:codigoOperadorDonante><ns14:operadorDonanteAltaExtraordinaria>false</ns14:operadorDonanteAltaExtraordinaria><ns14:codigoOperadorReceptor>798</ns14:codigoOperadorReceptor><ns14:abonado><ns14:documentoIdentificacion><ns14:tipo>NIE</ns14:tipo><ns14:documento>Y3037876D</ns14:documento></ns14:documentoIdentificacion><ns14:datosPersonales xsi:type="ns14:DatosPersonalesAbonadoPersonaFisica"><ns14:nombre>Oleg</ns14:nombre><ns14:primerApellido>Cabrerra</ns14:primerApellido><ns14:segundoApellido>Belousov</ns14:segundoApellido></ns14:datosPersonales></ns14:abonado><ns14:codigoContrato>798-TRAC_12</ns14:codigoContrato><ns14:NRNReceptor>704914</ns14:NRNReceptor><ns14:fechaVentanaCambio>2025-11-04T02:00:00+01:00</ns14:fechaVentanaCambio><ns14:fechaVentanaCambioPorAbonado>false</ns14:fechaVentanaCambioPorAbonado><ns14:MSISDN>621800005</ns14:MSISDN></ns14:solicitud></ns7:notificacion><ns7:notificacion><ns14:fechaCreacion>2025-11-03T11:30:10.389+01:00</ns14:fechaCreacion><ns14:sincronizada>false</ns14:sincronizada><ns14:codigoNotificacion>431154450</ns14:codigoNotificacion><ns14:solicitud xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns14:SolicitudIndividualAltaPortabilidadMovil"><ns14:fechaCreacion>2025-11-03T11:30:10.389+01:00</ns14:fechaCreacion><ns14:fechaEstado>2025-11-03T11:30:10.389+01:00</ns14:fechaEstado><ns14:codigoReferencia>79829911251103113000104</ns14:codigoReferencia><ns14:fechaMarcaLectura>2025-11-03T11:30:10.389+01:00</ns14:fechaMarcaLectura><ns14:estado>ASOL</ns14:estado><ns14:fechaLimiteCambioEstado>2025-11-03T20:00:00+01:00</ns14:fechaLimiteCambioEstado><ns14:fechaSolicitudPorAbonado>2025-11-03T00:00:00+01:00</ns14:fechaSolicitudPorAbonado><ns14:codigoOperadorDonante>299</ns14:codigoOperadorDonante><ns14:operadorDonanteAltaExtraordinaria>false</ns14:operadorDonanteAltaExtraordinaria><ns14:codigoOperadorReceptor>798</ns14:codigoOperadorReceptor><ns14:abonado><ns14:documentoIdentificacion><ns14:tipo>NIE</ns14:tipo><ns14:documento>Y3037876D</ns14:documento></ns14:documentoIdentificacion><ns14:datosPersonales xsi:type="ns14:DatosPersonalesAbonadoPersonaFisica"><ns14:nombre>Oleg</ns14:nombre><ns14:primerApellido>Cabrerra</ns14:primerApellido><ns14:segundoApellido>Belousov</ns14:segundoApellido></ns14:datosPersonales></ns14:abonado><ns14:codigoContrato>798-TRAC_15</ns14:codigoContrato><ns14:NRNReceptor>704914</ns14:NRNReceptor><ns14:fechaVentanaCambio>2025-11-05T02:00:00+01:00</ns14:fechaVentanaCambio><ns14:fechaVentanaCambioPorAbonado>false</ns14:fechaVentanaCambioPorAbonado><ns14:MSISDN>621800006</ns14:MSISDN></ns14:solicitud></ns7:notificacion></ns7:respuestaObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar></S:Body></S:Envelope>
@@ -1464,6 +1516,8 @@ if __name__ == "__main__":
     parsed = parse_portout_response(xml_data)
 
     import json
+    print(parsed)
+    exit()
     print(json.dumps(parsed, indent=2, ensure_ascii=False))
     insert_portout_response_to_db(parsed)
     callback_bss_portout(parsed)

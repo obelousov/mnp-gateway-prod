@@ -1099,7 +1099,7 @@ def check_status_port_out_1(self):
             connection.close()
 
 from services.soap_services import parse_portout_response
-from services.database_service import insert_portout_response_to_db
+from services.database_service import insert_portout_response_to_db, check_if_port_out_request_in_db
 @app.task(bind=True, max_retries=3)
 def check_status_port_out(self):
     """
@@ -1118,6 +1118,7 @@ def check_status_port_out(self):
     page_count=settings.PAGE_COUNT_PORT_OUT
 
     connection = None
+    cursor = None
 
     try:
         connection = get_db_connection()
@@ -1147,13 +1148,14 @@ def check_status_port_out(self):
         total_records=int(meta.get("total_records"))
        
         if total_records > 0:
-            log_payload('NC', 'CHECK_STATUS_PORT_OUT_NC', 'REQUEST', str(consultar_payload))
-            logger.debug("STATUS_CHECK_PORT_OUT_REQUEST->NC:\n%s", str(consultar_payload))
+                if not check_if_port_out_request_in_db(parsed):    
+                    log_payload('NC', 'CHECK_STATUS_PORT_OUT_NC', 'REQUEST', str(consultar_payload))
+                    logger.debug("STATUS_CHECK_PORT_OUT_REQUEST->NC:\n%s", str(consultar_payload))
 
-            log_payload('NC', 'CHECK_STATUS_PORT_OUT', 'RESPONSE', str(response.text))
-            logger.debug("STATUS_CHECK_PORT_OUT_RESPONSE<-NC total records %s:\n%s", total_records,str(response.text))
-            insert_portout_response_to_db(parsed)
-            callback_bss_portout.delay(parsed)
+                    log_payload('NC', 'CHECK_STATUS_PORT_OUT', 'RESPONSE', str(response.text))
+                    logger.debug("STATUS_CHECK_PORT_OUT_RESPONSE<-NC total records %s:\n%s", total_records,str(response.text))
+                    insert_portout_response_to_db(parsed)
+                    callback_bss_portout.delay(parsed)
 
         # _, _, scheduled_datetime = calculate_countdown_working_hours(
         #                                                 delta=settings.TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK, 
