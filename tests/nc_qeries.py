@@ -1057,7 +1057,87 @@ import xml.etree.ElementTree as ET
 
 import xml.etree.ElementTree as ET
 
+import xml.etree.ElementTree as ET
+
 def parse_portout_response(xml_string: str):
+    """
+    Parse SOAP XML with Port-Out notifications and return
+    a structured, English-translated response.
+    Handles both Persona Fisica (nombre/apellidos)
+    and Persona Juridica (razonSocial).
+    """
+    xml_string = xml_string.lstrip().replace('\ufeff', '')
+    root = ET.fromstring(xml_string)
+
+    # Namespace-agnostic text extractor
+    def get_text(element, tag):
+        return element.findtext(f".//{{*}}{tag}")
+
+    # --- Response-level metadata ---
+    response_info = {
+        "response_code": get_text(root, "codigoRespuesta"),
+        "response_description": get_text(root, "descripcion"),
+        "paged_request_code": get_text(root, "codigoPeticionPaginada"),
+        "total_records": get_text(root, "totalRegistros"),
+        "is_last_page": get_text(root, "ultimaPagina")
+    }
+
+    # --- Extract Port-Out notifications ---
+    notifications = root.findall(".//{*}notificacion")
+    requests = []
+
+    for notif in notifications:
+        solicitud = notif.find(".//{*}solicitud")
+        if solicitud is None:
+            continue
+
+        get = lambda tag, _sol=solicitud: _sol.findtext(f".//{{*}}{tag}")
+
+        # Detect if abonado is persona física or jurídica
+        datos_personales = solicitud.find(".//{*}abonado/{*}datosPersonales")
+        razon_social = datos_personales.findtext(".//{*}razonSocial") if datos_personales is not None else None
+
+        # Build subscriber info
+        subscriber = {
+            "id_type": solicitud.findtext(".//{*}documentoIdentificacion/{*}tipo"),
+            "id_number": solicitud.findtext(".//{*}documentoIdentificacion/{*}documento"),
+            "first_name": solicitud.findtext(".//{*}datosPersonales/{*}nombre"),
+            "last_name_1": solicitud.findtext(".//{*}datosPersonales/{*}primerApellido"),
+            "last_name_2": solicitud.findtext(".//{*}datosPersonales/{*}segundoApellido"),
+            "razon_social": razon_social  # <-- ✅ Add here
+        }
+
+        request_data = {
+            "notification_id": get_text(notif, "codigoNotificacion"),
+            "creation_date": get_text(notif, "fechaCreacion"),
+            "synchronized": get_text(notif, "sincronizada"),
+            "reference_code": get("codigoReferencia"),
+            "status": get("estado"),
+            "state_date": get("fechaEstado"),
+            "creation_date_request": get("fechaCreacion"),
+            "reading_mark_date": get("fechaMarcaLectura"),
+            "state_change_deadline": get("fechaLimiteCambioEstado"),
+            "subscriber_request_date": get("fechaSolicitudPorAbonado"),
+            "donor_operator_code": get("codigoOperadorDonante"),
+            "receiver_operator_code": get("codigoOperadorReceptor"),
+            "extraordinary_donor_activation": get("operadorDonanteAltaExtraordinaria"),
+            "contract_code": get("codigoContrato"),
+            "receiver_NRN": get("NRNReceptor"),
+            "port_window_date": get("fechaVentanaCambio"),
+            "port_window_by_subscriber": get("fechaVentanaCambioPorAbonado"),
+            "MSISDN": get("MSISDN"),
+            "subscriber": subscriber
+        }
+
+        requests.append(request_data)
+
+    return {
+        "response_info": response_info,
+        "requests": requests
+    }
+
+
+def parse_portout_response_old(xml_string: str):
     """
     Parse SOAP XML with Port-Out notifications and return
     a structured English-translated response.
@@ -1230,7 +1310,70 @@ def normalize_datetime(dt_str):
         cleaned = dt_str.split('+')[0].split('.')[0].replace('T', ' ')
         return cleaned
     
-def insert_portout_response_to_db(parsed_data):
+def check_if_port_out_request_in_db_test_1(request_data: dict) -> bool:
+    """
+    Check if a Port-Out request is present in the database.
+    Accepts either:
+        {"reference_code": "..."}  OR
+        {"requests": [{"reference_code": "..."}]}
+    Returns True if found, False otherwise.
+    """
+    logger.debug("ENTER check_if_port_out_request_in_db() with data: %s", request_data)
+
+    if not request_data:
+        raise ValueError("Invalid input: request_data is empty or None")
+
+    # Determine where to extract reference_code from
+    if "reference_code" in request_data:
+        reference_code = request_data.get("reference_code")
+    elif "requests" in request_data and request_data["requests"]:
+        reference_code = request_data["requests"][0].get("reference_code")
+    else:
+        raise ValueError("Missing required field: reference_code")
+
+    if not reference_code or not reference_code.strip():
+        raise ValueError("reference_code is empty or invalid")
+
+    logger.debug("Checking reference_code: %s", reference_code)
+    print("Checking reference_code: %s", reference_code)
+
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        query = """
+            SELECT COUNT(*) 
+            FROM portout_request 
+            WHERE reference_code = %s
+        """
+        cursor.execute(query, (reference_code.strip(),))
+        result = cursor.fetchone()
+        exists = (result[0] if result else 0) > 0
+
+        logger.debug("Reference code '%s' exists in portout_request: %s", reference_code, exists)
+        return exists
+
+    except Exception as e:
+        logger.error("Error checking reference_code '%s' in portout_request: %s", reference_code, str(e))
+        return False
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+def get_company_name(req):
+    try:
+        return (req.get("subscriber", {})
+                .get("datosPersonales", {})
+                .get("razonSocial"))
+    except (AttributeError, KeyError):
+        return None
+
+def insert_portout_response_to_db_test(parsed_data):
     """
     Inserts parsed Port-Out response data into MySQL tables:
     - portout_metadata
@@ -1247,7 +1390,7 @@ def insert_portout_response_to_db(parsed_data):
                 "database": "portability_db"
             }
     """
-
+    print("Start::")
     try:
         # 1. Get database connection
         connection = get_db_connection()
@@ -1284,7 +1427,8 @@ def insert_portout_response_to_db(parsed_data):
                 donor_operator_code, receiver_operator_code, extraordinary_donor_activation,
                 contract_code, receiver_NRN, port_window_date, port_window_by_subscriber, MSISDN,
                 subscriber_id_type, subscriber_id_number, subscriber_first_name,
-                subscriber_last_name_1, subscriber_last_name_2, created_at, updated_at, status_nc, status_bss
+                subscriber_last_name_1, subscriber_last_name_2, created_at, updated_at, status_nc, status_bss, 
+                subscriber_type, company_name
             )
             VALUES (
                 %s, %s, %s, %s,
@@ -1293,12 +1437,24 @@ def insert_portout_response_to_db(parsed_data):
                 %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s,
-                %s, %s, NOW(), NOW(), %s, %s
+                %s, %s, NOW(), NOW(), %s, %s, %s, %s
             )
         """
 
         for req in parsed_data["requests"]:
             sub = req["subscriber"]
+            print("Inserting request for notification_id:", req.get("reference_code"))
+            print("Subscriber data:", req)
+            # company_name = req.get("razonSocial")
+            company_name = sub.get("razon_social")
+            print("Company Name:", company_name)
+            if company_name:  # This checks for non-empty and non-None
+                subscriber_type = "COMPANY"
+            else:
+                subscriber_type = "PERSON"
+
+            if check_if_port_out_request_in_db_test_1(req):
+                continue
 
             req_values = (
                 metadata_id,
@@ -1326,7 +1482,9 @@ def insert_portout_response_to_db(parsed_data):
                 sub.get("last_name_1"),
                 sub.get("last_name_2"),
                 status_nc,
-                status_bss
+                status_bss,
+                subscriber_type,
+                company_name
             )
             cursor.execute(insert_req_sql, req_values)
 
@@ -1356,6 +1514,11 @@ def callback_bss_portout(parsed_data):
     for req in parsed_data["requests"]:
         sub = req["subscriber"]
         notification_id=req.get("notification_id")
+        company_name = req.get("razonSocial")
+        if company_name:  # This checks for non-empty and non-None
+            subscriber_type = "COMPANY"
+        else:
+            subscriber_type = "PERSON"
 
         payload = {
             "notification_id": req.get("notification_id"),
@@ -1376,6 +1539,8 @@ def callback_bss_portout(parsed_data):
             "port_window_date": normalize_datetime(req.get("port_window_date")),
             "port_window_by_subscriber": 1 if str(req.get("port_window_by_subscriber")).lower() in ("true", "1") else 0,
             "MSISDN": req.get("MSISDN"),
+            "subscriber_type": subscriber_type,
+            "company_name": company_name,
             "subscriber": {
                 "id_type": sub.get("id_type"),
                 "id_number": sub.get("id_number"),
@@ -1491,6 +1656,61 @@ def parse_soap_response_dict_new(xml_data: str, tags: list[str]) -> dict:
 
     return result
 
+def check_if_port_out_request_in_db_test(request_data: dict) -> bool:
+    """
+    Check if a Port-Out request is present in the database.
+    Accepts either:
+        {"reference_code": "..."}  OR
+        {"requests": [{"reference_code": "..."}]}
+    Returns True if found, False otherwise.
+    """
+    logger.debug("ENTER check_if_port_out_request_in_db() with data: %s", request_data)
+
+    if not request_data:
+        raise ValueError("Invalid input: request_data is empty or None")
+
+    # Determine where to extract reference_code from
+    if "reference_code" in request_data:
+        reference_code = request_data.get("reference_code")
+    elif "requests" in request_data and request_data["requests"]:
+        reference_code = request_data["requests"][0].get("reference_code")
+    else:
+        raise ValueError("Missing required field: reference_code")
+
+    if not reference_code or not reference_code.strip():
+        raise ValueError("reference_code is empty or invalid")
+
+    logger.debug("Checking reference_code: %s", reference_code)
+    print("Checking reference_code: %s", reference_code)
+
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        query = """
+            SELECT COUNT(*) 
+            FROM portout_request 
+            WHERE reference_code = %s
+        """
+        cursor.execute(query, (reference_code.strip(),))
+        result = cursor.fetchone()
+        exists = (result[0] if result else 0) > 0
+
+        logger.debug("Reference code '%s' exists in portout_request: %s", reference_code, exists)
+        return exists
+
+    except Exception as e:
+        logger.error("Error checking reference_code '%s' in portout_request: %s", reference_code, str(e))
+        return False
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
 
 if __name__ == "__main__":
 
@@ -1510,13 +1730,38 @@ if __name__ == "__main__":
 
 #     exit()
 
-    xml_data = """
-<?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/"><S:Header/><S:Body><ns7:respuestaObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar xmlns:ns17="http://nc.aopm.es/v1-10/extras/fichero" xmlns:ns16="http://nc.aopm.es/v1-10/fichero" xmlns:ns15="http://nc.aopm.es/v1-7/integracion" xmlns:ns14="http://nc.aopm.es/v1-10" xmlns:ns13="http://nc.aopm.es/v1-10/extras/portabilidad" xmlns:ns12="http://nc.aopm.es/v1-10/extras/informe" xmlns:ns11="http://nc.aopm.es/v1-10/extras/incidencia" xmlns:ns10="http://nc.aopm.es/v1-10/extras/buzon" xmlns:ns9="http://nc.aopm.es/v1-10/portabilidad" xmlns:ns8="http://nc.aopm.es/v1-10/administracion" xmlns:ns7="http://nc.aopm.es/v1-10/buzon" xmlns:ns6="http://nc.aopm.es/v1-10/extras/administracion" xmlns:ns5="http://nc.aopm.es/v1-10/incidencia" xmlns:ns4="http://nc.aopm.es/v1-10/acceso" xmlns:ns3="http://nc.aopm.es/v1-10/extras" xmlns:ns2="http://nc.aopm.es/v1-10/boletin"><ns14:codigoRespuesta>0000 00000</ns14:codigoRespuesta><ns14:descripcion>La operación se ha realizado con éxito</ns14:descripcion><ns14:codigoPeticionPaginada>b63653087d60ebca0afd81001dea65e4</ns14:codigoPeticionPaginada><ns14:totalRegistros>2</ns14:totalRegistros><ns14:ultimaPagina>true</ns14:ultimaPagina><ns7:notificacion><ns14:fechaCreacion>2025-10-31T17:25:33.038+01:00</ns14:fechaCreacion><ns14:sincronizada>false</ns14:sincronizada><ns14:codigoNotificacion>431148150</ns14:codigoNotificacion><ns14:solicitud xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns14:SolicitudIndividualAltaPortabilidadMovil"><ns14:fechaCreacion>2025-10-31T17:25:33.038+01:00</ns14:fechaCreacion><ns14:fechaEstado>2025-10-31T17:25:33.038+01:00</ns14:fechaEstado><ns14:codigoReferencia>79829911251031172500401</ns14:codigoReferencia><ns14:fechaMarcaLectura>2025-10-31T17:25:33.038+01:00</ns14:fechaMarcaLectura><ns14:estado>ASOL</ns14:estado><ns14:fechaLimiteCambioEstado>2025-11-03T14:00:00+01:00</ns14:fechaLimiteCambioEstado><ns14:fechaSolicitudPorAbonado>2025-10-31T00:00:00+01:00</ns14:fechaSolicitudPorAbonado><ns14:codigoOperadorDonante>299</ns14:codigoOperadorDonante><ns14:operadorDonanteAltaExtraordinaria>false</ns14:operadorDonanteAltaExtraordinaria><ns14:codigoOperadorReceptor>798</ns14:codigoOperadorReceptor><ns14:abonado><ns14:documentoIdentificacion><ns14:tipo>NIE</ns14:tipo><ns14:documento>Y3037876D</ns14:documento></ns14:documentoIdentificacion><ns14:datosPersonales xsi:type="ns14:DatosPersonalesAbonadoPersonaFisica"><ns14:nombre>Oleg</ns14:nombre><ns14:primerApellido>Cabrerra</ns14:primerApellido><ns14:segundoApellido>Belousov</ns14:segundoApellido></ns14:datosPersonales></ns14:abonado><ns14:codigoContrato>798-TRAC_12</ns14:codigoContrato><ns14:NRNReceptor>704914</ns14:NRNReceptor><ns14:fechaVentanaCambio>2025-11-04T02:00:00+01:00</ns14:fechaVentanaCambio><ns14:fechaVentanaCambioPorAbonado>false</ns14:fechaVentanaCambioPorAbonado><ns14:MSISDN>621800005</ns14:MSISDN></ns14:solicitud></ns7:notificacion><ns7:notificacion><ns14:fechaCreacion>2025-11-03T11:30:10.389+01:00</ns14:fechaCreacion><ns14:sincronizada>false</ns14:sincronizada><ns14:codigoNotificacion>431154450</ns14:codigoNotificacion><ns14:solicitud xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns14:SolicitudIndividualAltaPortabilidadMovil"><ns14:fechaCreacion>2025-11-03T11:30:10.389+01:00</ns14:fechaCreacion><ns14:fechaEstado>2025-11-03T11:30:10.389+01:00</ns14:fechaEstado><ns14:codigoReferencia>79829911251103113000104</ns14:codigoReferencia><ns14:fechaMarcaLectura>2025-11-03T11:30:10.389+01:00</ns14:fechaMarcaLectura><ns14:estado>ASOL</ns14:estado><ns14:fechaLimiteCambioEstado>2025-11-03T20:00:00+01:00</ns14:fechaLimiteCambioEstado><ns14:fechaSolicitudPorAbonado>2025-11-03T00:00:00+01:00</ns14:fechaSolicitudPorAbonado><ns14:codigoOperadorDonante>299</ns14:codigoOperadorDonante><ns14:operadorDonanteAltaExtraordinaria>false</ns14:operadorDonanteAltaExtraordinaria><ns14:codigoOperadorReceptor>798</ns14:codigoOperadorReceptor><ns14:abonado><ns14:documentoIdentificacion><ns14:tipo>NIE</ns14:tipo><ns14:documento>Y3037876D</ns14:documento></ns14:documentoIdentificacion><ns14:datosPersonales xsi:type="ns14:DatosPersonalesAbonadoPersonaFisica"><ns14:nombre>Oleg</ns14:nombre><ns14:primerApellido>Cabrerra</ns14:primerApellido><ns14:segundoApellido>Belousov</ns14:segundoApellido></ns14:datosPersonales></ns14:abonado><ns14:codigoContrato>798-TRAC_15</ns14:codigoContrato><ns14:NRNReceptor>704914</ns14:NRNReceptor><ns14:fechaVentanaCambio>2025-11-05T02:00:00+01:00</ns14:fechaVentanaCambio><ns14:fechaVentanaCambioPorAbonado>false</ns14:fechaVentanaCambioPorAbonado><ns14:MSISDN>621800006</ns14:MSISDN></ns14:solicitud></ns7:notificacion></ns7:respuestaObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar></S:Body></S:Envelope>
+#     xml_data = """
+# <?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/"><S:Header/><S:Body><ns7:respuestaObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar xmlns:ns17="http://nc.aopm.es/v1-10/extras/fichero" xmlns:ns16="http://nc.aopm.es/v1-10/fichero" xmlns:ns15="http://nc.aopm.es/v1-7/integracion" xmlns:ns14="http://nc.aopm.es/v1-10" xmlns:ns13="http://nc.aopm.es/v1-10/extras/portabilidad" xmlns:ns12="http://nc.aopm.es/v1-10/extras/informe" xmlns:ns11="http://nc.aopm.es/v1-10/extras/incidencia" xmlns:ns10="http://nc.aopm.es/v1-10/extras/buzon" xmlns:ns9="http://nc.aopm.es/v1-10/portabilidad" xmlns:ns8="http://nc.aopm.es/v1-10/administracion" xmlns:ns7="http://nc.aopm.es/v1-10/buzon" xmlns:ns6="http://nc.aopm.es/v1-10/extras/administracion" xmlns:ns5="http://nc.aopm.es/v1-10/incidencia" xmlns:ns4="http://nc.aopm.es/v1-10/acceso" xmlns:ns3="http://nc.aopm.es/v1-10/extras" xmlns:ns2="http://nc.aopm.es/v1-10/boletin"><ns14:codigoRespuesta>0000 00000</ns14:codigoRespuesta><ns14:descripcion>La operación se ha realizado con éxito</ns14:descripcion><ns14:codigoPeticionPaginada>b63653087d60ebca0afd81001dea65e4</ns14:codigoPeticionPaginada><ns14:totalRegistros>2</ns14:totalRegistros><ns14:ultimaPagina>true</ns14:ultimaPagina><ns7:notificacion><ns14:fechaCreacion>2025-10-31T17:25:33.038+01:00</ns14:fechaCreacion><ns14:sincronizada>false</ns14:sincronizada><ns14:codigoNotificacion>431148150</ns14:codigoNotificacion><ns14:solicitud xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns14:SolicitudIndividualAltaPortabilidadMovil"><ns14:fechaCreacion>2025-10-31T17:25:33.038+01:00</ns14:fechaCreacion><ns14:fechaEstado>2025-10-31T17:25:33.038+01:00</ns14:fechaEstado><ns14:codigoReferencia>79829911251031172500401</ns14:codigoReferencia><ns14:fechaMarcaLectura>2025-10-31T17:25:33.038+01:00</ns14:fechaMarcaLectura><ns14:estado>ASOL</ns14:estado><ns14:fechaLimiteCambioEstado>2025-11-03T14:00:00+01:00</ns14:fechaLimiteCambioEstado><ns14:fechaSolicitudPorAbonado>2025-10-31T00:00:00+01:00</ns14:fechaSolicitudPorAbonado><ns14:codigoOperadorDonante>299</ns14:codigoOperadorDonante><ns14:operadorDonanteAltaExtraordinaria>false</ns14:operadorDonanteAltaExtraordinaria><ns14:codigoOperadorReceptor>798</ns14:codigoOperadorReceptor><ns14:abonado><ns14:documentoIdentificacion><ns14:tipo>NIE</ns14:tipo><ns14:documento>Y3037876D</ns14:documento></ns14:documentoIdentificacion><ns14:datosPersonales xsi:type="ns14:DatosPersonalesAbonadoPersonaFisica"><ns14:nombre>Oleg</ns14:nombre><ns14:primerApellido>Cabrerra</ns14:primerApellido><ns14:segundoApellido>Belousov</ns14:segundoApellido></ns14:datosPersonales></ns14:abonado><ns14:codigoContrato>798-TRAC_12</ns14:codigoContrato><ns14:NRNReceptor>704914</ns14:NRNReceptor><ns14:fechaVentanaCambio>2025-11-04T02:00:00+01:00</ns14:fechaVentanaCambio><ns14:fechaVentanaCambioPorAbonado>false</ns14:fechaVentanaCambioPorAbonado><ns14:MSISDN>621800005</ns14:MSISDN></ns14:solicitud></ns7:notificacion><ns7:notificacion><ns14:fechaCreacion>2025-11-03T11:30:10.389+01:00</ns14:fechaCreacion><ns14:sincronizada>false</ns14:sincronizada><ns14:codigoNotificacion>431154450</ns14:codigoNotificacion><ns14:solicitud xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns14:SolicitudIndividualAltaPortabilidadMovil"><ns14:fechaCreacion>2025-11-03T11:30:10.389+01:00</ns14:fechaCreacion><ns14:fechaEstado>2025-11-03T11:30:10.389+01:00</ns14:fechaEstado><ns14:codigoReferencia>79829911251103113000104</ns14:codigoReferencia><ns14:fechaMarcaLectura>2025-11-03T11:30:10.389+01:00</ns14:fechaMarcaLectura><ns14:estado>ASOL</ns14:estado><ns14:fechaLimiteCambioEstado>2025-11-03T20:00:00+01:00</ns14:fechaLimiteCambioEstado><ns14:fechaSolicitudPorAbonado>2025-11-03T00:00:00+01:00</ns14:fechaSolicitudPorAbonado><ns14:codigoOperadorDonante>299</ns14:codigoOperadorDonante><ns14:operadorDonanteAltaExtraordinaria>false</ns14:operadorDonanteAltaExtraordinaria><ns14:codigoOperadorReceptor>798</ns14:codigoOperadorReceptor><ns14:abonado><ns14:documentoIdentificacion><ns14:tipo>NIE</ns14:tipo><ns14:documento>Y3037876D</ns14:documento></ns14:documentoIdentificacion><ns14:datosPersonales xsi:type="ns14:DatosPersonalesAbonadoPersonaFisica"><ns14:nombre>Oleg</ns14:nombre><ns14:primerApellido>Cabrerra</ns14:primerApellido><ns14:segundoApellido>Belousov</ns14:segundoApellido></ns14:datosPersonales></ns14:abonado><ns14:codigoContrato>798-TRAC_15</ns14:codigoContrato><ns14:NRNReceptor>704914</ns14:NRNReceptor><ns14:fechaVentanaCambio>2025-11-05T02:00:00+01:00</ns14:fechaVentanaCambio><ns14:fechaVentanaCambioPorAbonado>false</ns14:fechaVentanaCambioPorAbonado><ns14:MSISDN>621800006</ns14:MSISDN></ns14:solicitud></ns7:notificacion></ns7:respuestaObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar></S:Body></S:Envelope>
+# """
+# port-out with legal 
+    from services.database_service import check_if_port_out_request_in_db
+    xml_data="""
+<?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/"><S:Header/><S:Body><ns8:respuestaObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar xmlns:ns17="http://nc.aopm.es/v1-10/extras/fichero" xmlns:ns16="http://nc.aopm.es/v1-10/fichero" xmlns:ns15="http://nc.aopm.es/v1-7/integracion" xmlns:ns14="http://nc.aopm.es/v1-10/portabilidad" xmlns:ns13="http://nc.aopm.es/v1-10/extras/portabilidad" xmlns:ns12="http://nc.aopm.es/v1-10/extras/informe" xmlns:ns11="http://nc.aopm.es/v1-10/extras/incidencia" xmlns:ns10="http://nc.aopm.es/v1-10/extras/buzon" xmlns:ns9="http://nc.aopm.es/v1-10/administracion" xmlns:ns8="http://nc.aopm.es/v1-10/buzon" xmlns:ns7="http://nc.aopm.es/v1-10/extras/administracion" xmlns:ns6="http://nc.aopm.es/v1-10/incidencia" xmlns:ns5="http://nc.aopm.es/v1-10/acceso" xmlns:ns4="http://nc.aopm.es/v1-10/extras" xmlns:ns3="http://nc.aopm.es/v1-10/boletin" xmlns:ns2="http://nc.aopm.es/v1-10"><ns2:codigoRespuesta>0000 00000</ns2:codigoRespuesta><ns2:descripcion>La operación se ha realizado con éxito</ns2:descripcion><ns2:codigoPeticionPaginada>945132a653375414ddb0d453d1093ddd</ns2:codigoPeticionPaginada><ns2:totalRegistros>2</ns2:totalRegistros><ns2:ultimaPagina>true</ns2:ultimaPagina><ns8:notificacion><ns2:fechaCreacion>2025-11-05T11:09:52.681+01:00</ns2:fechaCreacion><ns2:sincronizada>false</ns2:sincronizada><ns2:codigoNotificacion>431174300</ns2:codigoNotificacion><ns2:solicitud xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns2:SolicitudIndividualAltaPortabilidadMovil"><ns2:fechaCreacion>2025-11-05T11:09:52.681+01:00</ns2:fechaCreacion><ns2:fechaEstado>2025-11-05T11:09:52.681+01:00</ns2:fechaEstado><ns2:codigoReferencia>79829911251105110900101</ns2:codigoReferencia><ns2:fechaMarcaLectura>2025-11-05T11:09:52.681+01:00</ns2:fechaMarcaLectura><ns2:estado>ASOL</ns2:estado><ns2:fechaLimiteCambioEstado>2025-11-05T20:00:00+01:00</ns2:fechaLimiteCambioEstado><ns2:fechaSolicitudPorAbonado>2025-11-05T00:00:00+01:00</ns2:fechaSolicitudPorAbonado><ns2:codigoOperadorDonante>299</ns2:codigoOperadorDonante><ns2:operadorDonanteAltaExtraordinaria>false</ns2:operadorDonanteAltaExtraordinaria><ns2:codigoOperadorReceptor>798</ns2:codigoOperadorReceptor><ns2:abonado><ns2:documentoIdentificacion><ns2:tipo>NIE</ns2:tipo><ns2:documento>Y3037876D</ns2:documento></ns2:documentoIdentificacion><ns2:datosPersonales xsi:type="ns2:DatosPersonalesAbonadoPersonaFisica"><ns2:nombre>OLEG</ns2:nombre><ns2:primerApellido>Diego</ns2:primerApellido><ns2:segundoApellido>BELOUSOV</ns2:segundoApellido></ns2:datosPersonales></ns2:abonado><ns2:codigoContrato>798-TRAC_12</ns2:codigoContrato><ns2:NRNReceptor>704914</ns2:NRNReceptor><ns2:fechaVentanaCambio>2025-11-07T02:00:00+01:00</ns2:fechaVentanaCambio><ns2:fechaVentanaCambioPorAbonado>false</ns2:fechaVentanaCambioPorAbonado><ns2:MSISDN>621800005</ns2:MSISDN></ns2:solicitud></ns8:notificacion><ns8:notificacion><ns2:fechaCreacion>2025-11-05T12:07:30.593+01:00</ns2:fechaCreacion><ns2:sincronizada>false</ns2:sincronizada><ns2:codigoNotificacion>431174400</ns2:codigoNotificacion><ns2:solicitud xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns2:SolicitudIndividualAltaPortabilidadMovil"><ns2:fechaCreacion>2025-11-05T12:07:30.593+01:00</ns2:fechaCreacion><ns2:fechaEstado>2025-11-05T12:07:30.593+01:00</ns2:fechaEstado><ns2:codigoReferencia>79829911251105120700103</ns2:codigoReferencia><ns2:fechaMarcaLectura>2025-11-05T12:07:30.593+01:00</ns2:fechaMarcaLectura><ns2:estado>ASOL</ns2:estado><ns2:fechaLimiteCambioEstado>2025-11-05T20:00:00+01:00</ns2:fechaLimiteCambioEstado><ns2:fechaSolicitudPorAbonado>2025-11-05T00:00:00+01:00</ns2:fechaSolicitudPorAbonado><ns2:codigoOperadorDonante>299</ns2:codigoOperadorDonante><ns2:operadorDonanteAltaExtraordinaria>false</ns2:operadorDonanteAltaExtraordinaria><ns2:codigoOperadorReceptor>798</ns2:codigoOperadorReceptor><ns2:abonado><ns2:documentoIdentificacion><ns2:tipo>CIF</ns2:tipo><ns2:documento>A12345678</ns2:documento></ns2:documentoIdentificacion><ns2:datosPersonales xsi:type="ns2:DatosPersonalesAbonadoPersonaJuridica"><ns2:razonSocial>MyComapny</ns2:razonSocial></ns2:datosPersonales></ns2:abonado><ns2:codigoContrato>798-CORP_01</ns2:codigoContrato><ns2:NRNReceptor>704914</ns2:NRNReceptor><ns2:fechaVentanaCambio>2025-11-07T02:00:00+01:00</ns2:fechaVentanaCambio><ns2:fechaVentanaCambioPorAbonado>false</ns2:fechaVentanaCambioPorAbonado><ns2:MSISDN>621800007</ns2:MSISDN></ns2:solicitud></ns8:notificacion></ns8:respuestaObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar></S:Body></S:Envelope>
 """
     parsed = parse_portout_response(xml_data)
+    meta = parsed["response_info"]
+    total_records=int(meta.get("total_records"))
+    print(f"Total Records: {total_records}")
+
+    if total_records > 0:
+        # res = check_if_port_out_request_in_db(parsed)
+        # print(f"Port-out request exists in DB: {res}")
+        # if not check_if_port_out_request_in_db(parsed):    
+            insert_portout_response_to_db_test(parsed)
+            # callback_bss_portout.delay(parsed)
+
+
+    exit()
 
     import json
     print(parsed)
+
+    # logger.debug("Checking existence of port-out request for reject: %s", reference_code)
+    # request_data = {"reference_code": request.reference_code}
+    if not check_if_port_out_request_in_db_test(parsed):
+        print("Port-out request not found in DB, cannot proceed with reject.")
+    else:
+        print("Port-out request found in DB, proceeding with reject.")    
     exit()
     print(json.dumps(parsed, indent=2, ensure_ascii=False))
     insert_portout_response_to_db(parsed)

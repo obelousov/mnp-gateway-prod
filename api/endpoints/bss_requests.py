@@ -16,7 +16,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from porting.spain_nc import submit_to_central_node_online, submit_to_central_node_cancel_online, submit_to_central_node_cancel_online_sync 
 from ..core.metrics import record_port_in_success, record_port_in_error, record_port_in_processing_time
 from services.database_service import check_if_port_out_request_in_db
-from porting.spain_nc import submit_to_central_node_port_out_reject
+from porting.spain_nc import submit_to_central_node_port_out_reject, submit_to_central_node_port_out_confirm
 
 router = APIRouter()
 
@@ -1325,4 +1325,193 @@ async def reject_port_out_request(request: RejectPortOutRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process Port-Out Reject request: {str(e)}"
+        ) from e    
+    
+class ConfirmPortOutRequest(BaseModel):
+    """
+    Model for reject port-out request | SOAP method: `RechazarSolicitudAltaPortabilidadMovil`
+    WSDL Reference: '<por:peticionRechazarSolicitudAltaPortabilidadMovil>'
+    """
+    reference_code: str = Field(
+        ...,
+        description="Port-Out request reference code returned by NC | WSDL: `por:codigoReferencia`",
+        examples=["29979811251023094300005"],
+        min_length=23,
+        max_length=23,
+        pattern="^[0-9]{23}$"  # Ensures exactly 23 digits
+    )
+
+class ConfirmPortOutresponse(BaseModel):
+    """ Cancellation response model | SOAP method: `CancelarSolicitudAltaPortabilidadMovilResponse`  
+        WSDL Reference: 'por:respuestaCancelarSolicitudAltaPortabilidadMovil'
+    """
+    # message: str = Field(..., examples=["Cancellation request accepted and queued for processing"])
+    # request_id: int = Field(..., examples=[12345], description="Internal cancellation request ID")
+    # reference_code: str = Field(..., examples=["PORT_IN_12345"], description="Original reference code")
+    # msisdn: str = Field(..., examples=["34600000001"], description="Phone number being cancelled")
+    # session_code: Optional[str] = Field(None, examples=["SESSION_001"], description="Session code if provided")
+    # status: str = Field(..., examples=["PROCESSING"], description="Current request status")
+    success: bool = Field(
+        ...,
+        examples=[True, False],
+        description="Indicates if the operation was successful"
+    )    
+    response_code: str = Field(
+        ...,
+        max_length=20,
+        examples=["0000 00000", "ACCS PERME", "AREC HORFV"],
+        description="Código de respuesta. 10 caracteres máximo"
+    )
+    description: str = Field(
+        ...,
+        max_length=512,
+        examples=["some description"],
+        description="Descripcion de la respuesta. 512 caracteres máximo"
+    )
+
+    campo_erroneo: Optional[CampoErroneo] = Field(
+        None,
+        description="Detalles del campo erróneo si la cancelación falló | WSDL: `co-v1-10:CampoErroneo`",
+        examples=[{
+            "nombre": "codigoOperadorDonante",
+            "descripcion": "Campo con restricción de longitud fija de 3 caracteres"
+        }]
+    )
+
+@router.post(
+    '/port-out-confirm', 
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(verify_basic_auth)],
+    response_model=ConfirmPortOutresponse,
+    summary="Submit Port-out Confirm Request",
+    description="""
+    Confirm existing number port-out request.
+    
+    This endpoint:
+    - Accepts confirmation requests from BSS. 
+    - Update port-out request in portout_request table
+    - Send confrim reuest to Central Node processing
+    - Returns received response from NC
+    - update status in portout_request table
+    
+    **Workflow:**
+    1. Request validation and immediate database storage
+    
+    **Note:** Only pending portability requests can be cancelled.
+    """,
+    response_description="Confiorm request for port-out accepted and queued for processing",
+    tags=["Spain: Portability Operations"],
+    responses={
+        202: {
+            "description": "Confirm request accepted successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "Confirm request accepted and queued for processing",
+                        "request_id": 12345,
+                        "reference_code": "PORT_IN_12345",
+                        "msisdn": "34600000001",
+                        "session_code": "SESSION_001",
+                        "status": "PROCESSING"
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Invalid request data",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "reference_code is required"
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Original portability request not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Portability request PORT_IN_99999 not found"
+                    }
+                }
+            }
+        },
+        500: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Failed to process cancellation request: Database connection error"
+                    }
+                }
+            }
+        }
+    }
+)
+async def confirm_port_out_request(request: ConfirmPortOutRequest):
+    """
+    Port-Out Confirm Endpoint
+    
+    Processes confirmation of Port-Out request.
+    
+    **Validation:**
+    - Validates reference_code exists in system
+    
+    **Business Rules:**
+    - Only pending portability requests can be cancelled
+    
+    **Example Request:**
+    ```json
+    {
+        "reference_code": "79829911251103113000104"
+    }
+    ```
+    """
+    # Validate request exists FIRST (outside try-except)
+    reference_code = request.reference_code
+    logger.debug("Checking existence of port-out request for reject: %s", reference_code)
+    request_data = {"reference_code": request.reference_code}
+    if not check_if_port_out_request_in_db(request_data):
+        logger.warning("Reference code %s not found for Port-Out reject", reference_code)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Port-Out request {reference_code} not found"
+        )
+    
+    try:
+        logger.info("--- Processing Port-Out Confirm request --- for reference: %s",
+                   reference_code)
+        
+        # Convert Pydantic model to dict for existing functions
+        alta_data = request.dict()
+        # Convert enum to its string value
+        # if 'cancellation_reason' in alta_data and alta_data['cancellation_reason']:
+        #     alta_data['cancellation_reason'] = alta_data['cancellation_reason'].value
+
+        # 1. Log the incoming payload
+        # log_payload('BSS', 'PORT_OUT_REJECT', 'REQUEST', str(alta_data))
+        # logger.debug("PORT_OUT_REJECT->NC:\n%s", str(alta_data))
+        
+        # 2. Save to database immediately
+        # request_id = save_cancel_request_db_online(alta_data, "CANCELLATION", "ESP")
+
+        # 3. Submit to NC and get response
+        success, response_code, description = submit_to_central_node_port_out_confirm(alta_data)
+        logger.debug("Success: %s response_code %s description %s", success, response_code, description)
+
+        # 4. Return the NC response
+        return RejectPortOutresponse(
+            success=success,
+            response_code=response_code or "UNKNOWN",
+            description=description or "No response from NC",
+            campo_erroneo=None
+        )
+        
+    except Exception as e:
+        logger.error("Failed to process Port-Out Confirm request for reference %s: %s", 
+                    request.reference_code, str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process Port-Out Confirm request: {str(e)}"
         ) from e    

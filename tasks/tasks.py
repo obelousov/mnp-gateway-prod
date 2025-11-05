@@ -485,11 +485,29 @@ def callback_bss_portout(self,parsed_data):
     meta = parsed_data["response_info"]
     request_code = meta.get("paged_request_code")
     logger.debug("ENTER callback_bss_portout() with paged_request_code %s", request_code)
+    connection = None
+    cursor = None
+
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
 
     for req in parsed_data["requests"]:
+        reference_code = req.get("reference_code")
+        check_if_submitted_query = "SELECT submitted_to_bss FROM portout_request WHERE reference_code = %s"
+        cursor.execute(check_if_submitted_query, (reference_code,))
+        existing_record = cursor.fetchone()
+        if existing_record and existing_record.get('submitted_to_bss') == 1:
+            logger.debug("Request %s already submitted to BSS - skipping", reference_code)
+            continue
+
         sub = req["subscriber"]
         notification_id=req.get("notification_id")
-        reference_code = req.get("reference_code")
+        # reference_code = req.get("reference_code")
+        company_name = sub.get("razon_social")
+        if company_name:  # This checks for non-empty and non-None
+            subscriber_type = "COMPANY"
+        else:
+            subscriber_type = "PERSON"
 
         payload = {
             "notification_id": req.get("notification_id"),
@@ -510,6 +528,8 @@ def callback_bss_portout(self,parsed_data):
             "port_window_date": normalize_datetime(req.get("port_window_date")),
             "port_window_by_subscriber": 1 if str(req.get("port_window_by_subscriber")).lower() in ("true", "1") else 0,
             "MSISDN": req.get("MSISDN"),
+            "subscriber_type": subscriber_type,
+            "company_name": company_name,
             "subscriber": {
                 "id_type": sub.get("id_type"),
                 "id_number": sub.get("id_number"),
@@ -545,6 +565,7 @@ def callback_bss_portout(self,parsed_data):
                     update_query = """
                         UPDATE portout_request 
                         SET status_bss = %s,
+                        submitted_to_bss = 1,
                         updated_at = NOW() 
                         WHERE reference_code = %s
                     """
@@ -1140,22 +1161,22 @@ def check_status_port_out(self):
                                timeout=settings.APIGEE_API_QUERY_TIMEOUT)
         response.raise_for_status()
 
-        # log_payload('NC', 'CHECK_STATUS_PORT_OUT', 'RESPONSE', str(response.text))
-        # logger.debug("STATUS_CHECK_PORT_OUT_RESPONSE<-NC:\n%s", str(response.text))
+        log_payload('NC', 'CHECK_STATUS_PORT_OUT', 'RESPONSE', str(response.text))
+        logger.debug("STATUS_CHECK_PORT_OUT_RESPONSE<-NC:\n%s", str(response.text))
 
         parsed = parse_portout_response(response.text)
         meta = parsed["response_info"]
         total_records=int(meta.get("total_records"))
        
         if total_records > 0:
-                if not check_if_port_out_request_in_db(parsed):    
-                    log_payload('NC', 'CHECK_STATUS_PORT_OUT_NC', 'REQUEST', str(consultar_payload))
-                    logger.debug("STATUS_CHECK_PORT_OUT_REQUEST->NC:\n%s", str(consultar_payload))
+                # if not check_if_port_out_request_in_db(parsed):    
+            log_payload('NC', 'CHECK_STATUS_PORT_OUT_NC', 'REQUEST', str(consultar_payload))
+            logger.debug("STATUS_CHECK_PORT_OUT_REQUEST->NC:\n%s", str(consultar_payload))
 
-                    log_payload('NC', 'CHECK_STATUS_PORT_OUT', 'RESPONSE', str(response.text))
-                    logger.debug("STATUS_CHECK_PORT_OUT_RESPONSE<-NC total records %s:\n%s", total_records,str(response.text))
-                    insert_portout_response_to_db(parsed)
-                    callback_bss_portout.delay(parsed)
+            log_payload('NC', 'CHECK_STATUS_PORT_OUT', 'RESPONSE', str(response.text))
+            logger.debug("STATUS_CHECK_PORT_OUT_RESPONSE<-NC total records %s:\n%s", total_records,str(response.text))
+            insert_portout_response_to_db(parsed) # in the insert check if records with such reference_code exist
+            callback_bss_portout.delay(parsed)
 
         # _, _, scheduled_datetime = calculate_countdown_working_hours(
         #                                                 delta=settings.TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK, 

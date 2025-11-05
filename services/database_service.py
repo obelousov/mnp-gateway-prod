@@ -546,7 +546,7 @@ def insert_portout_response_to_db(parsed_data):
                 donor_operator_code, receiver_operator_code, extraordinary_donor_activation,
                 contract_code, receiver_NRN, port_window_date, port_window_by_subscriber, MSISDN,
                 subscriber_id_type, subscriber_id_number, subscriber_first_name,
-                subscriber_last_name_1, subscriber_last_name_2, created_at, updated_at, status_nc, status_bss
+                subscriber_last_name_1, subscriber_last_name_2, created_at, updated_at, status_nc, status_bss, subscriber_type, company_name
             )
             VALUES (
                 %s, %s, %s, %s,
@@ -555,12 +555,23 @@ def insert_portout_response_to_db(parsed_data):
                 %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s,
-                %s, %s, NOW(), NOW(), %s, %s
+                %s, %s, NOW(), NOW(), %s, %s, %s, %s
             )
         """
 
         for req in parsed_data["requests"]:
             sub = req["subscriber"]
+
+            if check_if_port_out_request_in_db(req):
+                continue
+
+            company_name = sub.get("razon_social")
+            logger.debug("Company Name: %s", company_name)
+            if company_name:  # This checks for non-empty and non-None
+                subscriber_type = "COMPANY"
+            else:
+                subscriber_type = "PERSON"
+            logger.debug("Subscriber_type: %s", subscriber_type)    
 
             req_values = (
                 metadata_id,
@@ -588,7 +599,9 @@ def insert_portout_response_to_db(parsed_data):
                 sub.get("last_name_1"),
                 sub.get("last_name_2"),
                 status_nc,
-                status_bss
+                status_bss,
+                subscriber_type,
+                company_name
             )
             cursor.execute(insert_req_sql, req_values)
 

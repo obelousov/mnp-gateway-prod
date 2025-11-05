@@ -11,7 +11,7 @@ from templates.soap_templates import PORTABILITY_REQUEST_TEMPLATE, CHECK_PORT_IN
 # from config import logger
 from services.logger import logger, payload_logger, log_payload
 from datetime import date, datetime
-from templates.soap_templates import REJECT_PORT_OUT_REQUEST
+from templates.soap_templates import REJECT_PORT_OUT_REQUEST, CONFIRM_PORT_OUT_REQUEST
 
 
 # Namespace definitions
@@ -830,6 +830,83 @@ import xml.etree.ElementTree as ET
 def parse_portout_response(xml_string: str):
     """
     Parse SOAP XML with Port-Out notifications and return
+    a structured, English-translated response.
+    Handles both Persona Fisica (nombre/apellidos)
+    and Persona Juridica (razonSocial).
+    """
+    xml_string = xml_string.lstrip().replace('\ufeff', '')
+    root = ET.fromstring(xml_string)
+
+    # Namespace-agnostic text extractor
+    def get_text(element, tag):
+        return element.findtext(f".//{{*}}{tag}")
+
+    # --- Response-level metadata ---
+    response_info = {
+        "response_code": get_text(root, "codigoRespuesta"),
+        "response_description": get_text(root, "descripcion"),
+        "paged_request_code": get_text(root, "codigoPeticionPaginada"),
+        "total_records": get_text(root, "totalRegistros"),
+        "is_last_page": get_text(root, "ultimaPagina")
+    }
+
+    # --- Extract Port-Out notifications ---
+    notifications = root.findall(".//{*}notificacion")
+    requests = []
+
+    for notif in notifications:
+        solicitud = notif.find(".//{*}solicitud")
+        if solicitud is None:
+            continue
+
+        get = lambda tag, _sol=solicitud: _sol.findtext(f".//{{*}}{tag}")
+
+        # Detect if abonado is persona física or jurídica
+        datos_personales = solicitud.find(".//{*}abonado/{*}datosPersonales")
+        razon_social = datos_personales.findtext(".//{*}razonSocial") if datos_personales is not None else None
+
+        # Build subscriber info
+        subscriber = {
+            "id_type": solicitud.findtext(".//{*}documentoIdentificacion/{*}tipo"),
+            "id_number": solicitud.findtext(".//{*}documentoIdentificacion/{*}documento"),
+            "first_name": solicitud.findtext(".//{*}datosPersonales/{*}nombre"),
+            "last_name_1": solicitud.findtext(".//{*}datosPersonales/{*}primerApellido"),
+            "last_name_2": solicitud.findtext(".//{*}datosPersonales/{*}segundoApellido"),
+            "razon_social": razon_social  # <-- ✅ Add here
+        }
+
+        request_data = {
+            "notification_id": get_text(notif, "codigoNotificacion"),
+            "creation_date": get_text(notif, "fechaCreacion"),
+            "synchronized": get_text(notif, "sincronizada"),
+            "reference_code": get("codigoReferencia"),
+            "status": get("estado"),
+            "state_date": get("fechaEstado"),
+            "creation_date_request": get("fechaCreacion"),
+            "reading_mark_date": get("fechaMarcaLectura"),
+            "state_change_deadline": get("fechaLimiteCambioEstado"),
+            "subscriber_request_date": get("fechaSolicitudPorAbonado"),
+            "donor_operator_code": get("codigoOperadorDonante"),
+            "receiver_operator_code": get("codigoOperadorReceptor"),
+            "extraordinary_donor_activation": get("operadorDonanteAltaExtraordinaria"),
+            "contract_code": get("codigoContrato"),
+            "receiver_NRN": get("NRNReceptor"),
+            "port_window_date": get("fechaVentanaCambio"),
+            "port_window_by_subscriber": get("fechaVentanaCambioPorAbonado"),
+            "MSISDN": get("MSISDN"),
+            "subscriber": subscriber
+        }
+
+        requests.append(request_data)
+
+    return {
+        "response_info": response_info,
+        "requests": requests
+    }
+
+def parse_portout_response_01(xml_string: str):
+    """
+    Parse SOAP XML with Port-Out notifications and return
     a structured English-translated response.
     """
     # 🧹 Clean XML (remove leading BOM/newlines)
@@ -914,4 +991,15 @@ def soap_port_out_reject(session_code, reference_code, cancellation_reason):
         session_code=session_code,
         reference_code=reference_code,
         reject_reason=cancellation_reason
+    )
+
+def soap_port_out_confirm(session_code, reference_code):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER soap_port_out_reject() reference_code %s", reference_code)
+     
+    return CONFIRM_PORT_OUT_REQUEST.format(
+        session_code=session_code,
+        reference_code=reference_code
     )
