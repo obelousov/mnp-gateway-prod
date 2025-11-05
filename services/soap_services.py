@@ -390,7 +390,48 @@ def create_status_check_soap(mnp_request_id: int, reference_code: str, msisdn: s
     )
 
 
+import xml.etree.ElementTree as ET
+from typing import List, Tuple, Optional
+
 def parse_soap_response_list(soap_xml: str, requested_fields: List[str]) -> Tuple[Optional[str], ...]:
+    """
+    Parse SOAP response and extract requested fields, regardless of namespace prefix.
+    Returns a tuple in the same order as requested_fields.
+    """
+    result = []
+
+    try:
+        root = ET.fromstring(soap_xml)
+
+        # Remove namespace prefix dynamically for easier matching
+        def strip_namespace(tag: str) -> str:
+            return tag.split('}')[-1] if '}' in tag else tag
+
+        # Build a simple mapping of all elements by localname (without namespace)
+        elements_by_name = {}
+        for elem in root.iter():
+            localname = strip_namespace(elem.tag)
+            elements_by_name[localname] = elem.text.strip() if elem.text else None
+
+        # Extract values for requested fields
+        for field in requested_fields:
+            value = elements_by_name.get(field)
+            result.append(value)
+
+    except ET.ParseError as e:
+        print(f"XML Parse error: {e}")
+        result = [None] * len(requested_fields)
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        result = [None] * len(requested_fields)
+
+    # Ensure consistent output
+    if len(result) != len(requested_fields):
+        result = [None] * len(requested_fields)
+
+    return tuple(result)
+
+def parse_soap_response_list_not_work(soap_xml: str, requested_fields: List[str]) -> Tuple[Optional[str], ...]:
     """
     Parse SOAP response and return values as tuple for easy unpacking
     

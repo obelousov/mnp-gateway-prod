@@ -15,7 +15,7 @@ from services.auth import verify_basic_auth
 from fastapi.openapi.docs import get_swagger_ui_html
 from porting.spain_nc import submit_to_central_node_online, submit_to_central_node_cancel_online, submit_to_central_node_cancel_online_sync 
 from ..core.metrics import record_port_in_success, record_port_in_error, record_port_in_processing_time
-from services.database_service import check_if_port_out_request_in_db
+from services.database_service import check_if_port_out_request_in_db, save_portability_request_person_legal
 from porting.spain_nc import submit_to_central_node_port_out_reject, submit_to_central_node_port_out_confirm
 
 router = APIRouter()
@@ -101,10 +101,28 @@ class IdentificationDocument(BaseModel):
         doc_type = values['document_type']
         v_clean = v.upper().replace(' ', '').replace('-', '')  # Clean input
 
+        # validation_patterns = {
+        #     "NIE": (r'^[XYZ]{1}[0-9]{7}[A-Z]{1}$', "NIE must be format: [X/Y/Z] + 7 digits + 1 letter (e.g., X1234567A)"),
+        #     "NIF": (r'^[0-9]{8}[A-Z]{1}$', "NIF must be 8 digits + 1 letter (e.g., 12345678Z)"),
+        #     # Add more patterns as needed
+        # }
         validation_patterns = {
-            "NIE": (r'^[XYZ]{1}[0-9]{7}[A-Z]{1}$', "NIE must be format: [X/Y/Z] + 7 digits + 1 letter (e.g., X1234567A)"),
-            "NIF": (r'^[0-9]{8}[A-Z]{1}$', "NIF must be 8 digits + 1 letter (e.g., 12345678Z)"),
-            # Add more patterns as needed
+            "NIE": (
+                r'^[XYZ]{1}[0-9]{7}[A-Z]{1}$',
+                "NIE must be format: [X/Y/Z] + 7 digits + 1 letter (e.g., X1234567A)"
+            ),
+            "NIF": (
+                r'^[0-9]{8}[A-Z]{1}$',
+                "NIF must be 8 digits + 1 letter (e.g., 12345678Z)"
+            ),
+            "CIF": (
+                r'^[ABCDEFGHJNPQRSUVW]{1}[0-9]{7}[0-9A-J]{1}$',
+                (
+                    "CIF must start with one letter (A, B, C, D, E, F, G, H, J, N, P, Q, R, S, U, V, or W), "
+                    "followed by 7 digits and a final control character (digit or letter A–J). "
+                    "Example: A12345678 or B1234567J"
+                )
+            )
         }
 
         if doc_type in validation_patterns:
@@ -113,26 +131,6 @@ class IdentificationDocument(BaseModel):
                 raise ValueError(f"{error_msg}. Got: {v}")
             
         return v_clean
-# class IdentificationDocument(BaseModel):
-#     """ Identification document data | WSDL: `<por:documentoIdentificacion>`"""
-#     document_type: str = Field(
-#         ...,
-#         description="Document type | WSDL: `<por:tipoDocumento>`",
-#         examples=["NIE", "DNI", "PASSPORT"]
-#     )
-#     document_number: str = Field(
-#         ...,
-#         description="Document number | WSDL: `<por:numeroDocumento>`",
-#         examples=["Y30307876", "12345678X"]
-#     )
-
-    # @field_validator('document_type')
-    # def validate_document_type(cls, v): # pylint: disable=no-self-argument
-    #     """Validate that document_type is one of the allowed types"""
-    #     allowed_document_types = ["NIF", "CIF", "NIE", "PAS"]
-    #     if v not in allowed_document_types:
-    #         raise ValueError(f'document_type must be one of: {", ".join(allowed_document_types)}')
-    #     return v
     
 class PersonalData(BaseModel):
     """ Personal data | WSDL: `<por:datosPersonales>`"""
@@ -157,17 +155,6 @@ class PersonalData(BaseModel):
         examples=["ES", "FR", "DE"]
     )
 
-# class Subscriber(BaseModel):
-#     """ Subscriber data | WSDL: `<por:abonado>`"""
-#     identification_document: IdentificationDocument = Field(
-#         ...,
-#         description="Identification document data"
-#     )
-#     personal_data: PersonalData = Field(
-#         ...,
-#         description="Personal data | WSDL: `<por:datosPersonales>`"
-#     )
-
 class SubscriberType(str, Enum):
     PERSON = "person"
     COMPANY = "company"
@@ -178,43 +165,6 @@ class CompanyData(BaseModel):
         description="Company legal name (razón social)",
         examples=["Empresa Ejemplo S.L."]
     )
-
-# class Subscriber(BaseModel):
-#     subscriber_type: SubscriberType = Field(
-#         ...,
-#         description="Type of subscriber: 'person' for individuals, 'company' for legal entities"
-#     )
-#     identification_document: IdentificationDocument
-#     personal_data: Optional[PersonalData] = None
-#     company_data: Optional[CompanyData] = None  # Add this for companies
-
-#     @validator('personal_data')
-#     def validate_personal_data(cls, v, values):
-#         if values.get('subscriber_type') == SubscriberType.PERSON and not v:
-#             raise ValueError("personal_data is required for person subscribers")
-#         return v
-
-#     # @validator('company_data')
-#     # def validate_company_data(cls, v, values):
-#     #     if values.get('subscriber_type') == SubscriberType.COMPANY and not v:
-#     #         raise ValueError("company_data is required for company subscribers")
-#     #     return v
-#     # @validator('company_data')
-#     # def validate_company_data(cls, v, values):
-#     #     if values.get('subscriber_type') == SubscriberType.COMPANY and not v:
-#     #         raise ValueError("company_data is required for company subscribers")
-#     #     return v
-
-#     @validator('company_data')
-#     def validate_company_data(cls, v, values):
-#         print("Validating company_data with values:", values)
-#         if 'subscriber_type' not in values:
-#             return v  # Let other validators handle the missing subscriber_type
-        
-#         subscriber_type = values['subscriber_type']
-#         if subscriber_type == SubscriberType.COMPANY and not v:
-#             raise ValueError("company_data is required for company subscribers")
-#         return v
 
 class Subscriber(BaseModel):
     subscriber_type: SubscriberType = Field(
@@ -283,18 +233,6 @@ class PortInRequest(BaseModel):
             raise ValueError(f'country_code must be one of: {", ".join(allowed_country_codes)}')
         
         return v
-    # @validator('company_type')
-    # def validate_company_type(cls, v):  # pylint: disable=no-self-argument
-    #     """Validate company_type
-    #     - Must be person or company
-    #     """
-    #     allowed_company_types = ["person", "company"]
-  
-    #     # Validate the country_code value (v is the actual value, not a dict)
-    #     if v not in allowed_company_types:
-    #         raise ValueError(f'company_type must be one of: {", ".join(allowed_company_types)}')
-        
-    #     return v
 
     session_code: str = Field(
         ...,
@@ -332,25 +270,6 @@ class PortInRequest(BaseModel):
             }
         }
     )    # subscriber: dict = Field(
-    #     ...,
-    #     description="Subscriber data | WSDL: `<por:abonado>`",
-    #     example={
-    #         "identification_document": {
-    #             "document_type": "NIE",
-    #             "document_number": "Y30307876"
-    #         },
-    #         "personal_data": {
-    #             "name_surname": "Jose Diego"
-    #         }
-    #     }
-    # )
-    # @field_validator('msisdn')
-    # def validate_msisdn(cls, v: str) -> str: # pylint: disable=no-self-argument
-    #     """Validate that msisdn contains exactly 9 digits"""
-    #     if not re.match(r'^\d{9}$', v):
-    #         raise ValueError('msisdn must contain exactly 9 digits. Remove country code prefix if present.')
-    #     return v
-
 
     @field_validator('donor_operator')
     def validate_donor_operator(cls, v: str) -> str: # pylint: disable=no-self-argument
@@ -497,12 +416,6 @@ class PortInRequest(BaseModel):
         pattern="^[0-9]{9}$"
     )
 
-class PortInResponse_1(BaseModel):
-    message: str = Field(..., examples=["Request accepted"])
-    id: Union[str, int] = Field(..., examples=["PORT_IN_12345", 12345], description="Internal request ID")
-    session_code: Union[str, int] = Field(..., examples=["13", 13], description="Original session code")
-    status: str = Field(..., examples=["PROCESSING"], description="Current request status")    
-
 class PortInResponse(BaseModel):
     id: int = Field(..., examples=[12345], description="Internal request ID")
     success: bool = Field(..., examples=[True, False])
@@ -567,7 +480,7 @@ async def portin_request(alta_data: PortInRequest):
         log_payload('BSS', 'PORT_IN', 'REQUEST', str(alta_data_dict))
 
         # 1. & 2. Create and save the DB record
-        new_request_id = save_portability_request_new(alta_data_dict, 'PORT_IN', 'ESP')
+        new_request_id = save_portability_request_person_legal(alta_data_dict, 'PORT_IN', 'ESP')
         if not new_request_id:
            raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -949,23 +862,6 @@ class CancelPortabilityResponse_online(BaseModel):
             "descripcion": "Campo con restricción de longitud fija de 3 caracteres"
         }]
     )
-# class CampoErroneo(BaseModel):
-#     """Erroneous field details | WSDL: `co-v1-10:CampoErroneo`"""
-#     nombre: str = Field(
-#         ...,
-#         max_length=32,
-#         description="Nombre del campo erróneo | WSDL: `co-v1-10:nombre`",
-#         examples=["codigoOperadorDonante", "documentNumber", "iccid"]
-#     )
-#     descripcion: str = Field(
-#         ...,
-#         max_length=512,
-#         description="Descripción del error | WSDL: `co-v1-10:descripcion`",
-#         examples=[
-#             "Campo con restricción de longitud fija de 3 caracteres, se recibieron 10 caracteres",
-#             "Formato de fecha inválido, debe ser DD/MM/YYYY HH:MM:SS"
-#         ]
-#     )
     
 @router.post(
     '/cancel-online', 
@@ -1083,7 +979,8 @@ async def cancel_portability_online(request: CancelPortabilityRequest_online):
         alta_data = request.dict()
         # Convert enum to its string value
         if 'cancellation_reason' in alta_data and alta_data['cancellation_reason']:
-            alta_data['cancellation_reason'] = alta_data['cancellation_reason'].value
+            # alta_data['cancellation_reason'] = alta_data['cancellation_reason'].value
+            alta_data['cancellation_reason'] = alta_data['cancellation_reason']
 
         # 1. Log the incoming payload
         log_payload('BSS', 'CANCEL_PORTABILITY', 'REQUEST', str(alta_data))
@@ -1298,7 +1195,8 @@ async def reject_port_out_request(request: RejectPortOutRequest):
         alta_data = request.dict()
         # Convert enum to its string value
         if 'cancellation_reason' in alta_data and alta_data['cancellation_reason']:
-            alta_data['cancellation_reason'] = alta_data['cancellation_reason'].value
+            # alta_data['cancellation_reason'] = alta_data['cancellation_reason'].value
+            alta_data['cancellation_reason'] = alta_data['cancellation_reason']
 
         # 1. Log the incoming payload
         # log_payload('BSS', 'PORT_OUT_REJECT', 'REQUEST', str(alta_data))
@@ -1515,3 +1413,360 @@ async def confirm_port_out_request(request: ConfirmPortOutRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process Port-Out Confirm request: {str(e)}"
         ) from e    
+
+class PersonalDataLegal(BaseModel):
+    """Personal data model for legal entities (companies)"""
+    company_name: str = Field(
+        ...,
+        description="Legal company name | WSDL: `<v1:razonSocial>`",
+        examples=["MyCompany SL", "Business Corp"]
+    )
+    
+    # Optional fields for legal entities
+    legal_representative: Optional[str] = Field(
+        None,
+        description="Legal representative name",
+        examples=["Juan Garcia Lopez"]
+    )
+    
+    @validator('company_name')
+    def validate_company_name(cls, v): # pylint: disable=no-self-argument
+        if not v or not v.strip():
+            raise ValueError("Company name is required for legal entities")
+        if len(v.strip()) < 2:
+            raise ValueError("Company name must be at least 2 characters long")
+        return v.strip()
+
+class SubscriberLegal(BaseModel):
+    """Subscriber model for legal entities"""
+    subscriber_type: str = Field(
+        "company",
+        description="Subscriber type - must be 'company' for legal entities",
+        examples=["company"]
+    )
+    
+    identification_document: IdentificationDocument = Field(
+        ...,
+        description="Legal entity identification document"
+    )
+    
+    personal_data: PersonalDataLegal = Field(
+        ...,
+        description="Legal entity personal data"
+    )
+    
+    @validator('subscriber_type')
+    def validate_subscriber_type(cls, v): # pylint: disable=no-self-argument
+        """Ensure subscriber type is 'company' for legal entities"""
+        if v != "company":
+            raise ValueError('Subscriber type must be "company" for legal entities')
+        return v
+    
+    @validator('identification_document')
+    def validate_legal_document(cls, v): # pylint: disable=no-self-argument
+        """Validate that legal entities use appropriate document types"""
+        legal_document_types = ["CIF", "NIF", "VAT"]
+        if v.document_type not in legal_document_types:
+            raise ValueError(f'Legal entities must use one of: {", ".join(legal_document_types)}')
+        return v
+
+class PortInRequestLegal(PortInRequest):
+    """
+    Pydantic model for Legal Entity (company) Port-In requests.
+    Ensures 'subscriber_type' = 'company' and 'document_type' = 'CIF' only.
+    """
+    
+    subscriber: SubscriberLegal = Field(
+        ...,
+        description="Legal entity subscriber data | WSDL: `<por:abonado>`",
+        example={
+            "subscriber_type": "company",
+            "identification_document": {
+                "document_type": "CIF",
+                "document_number": "A12345678"
+            },
+            "personal_data": {
+                "company_name": "MyCompany SL"
+            }
+        }
+    )
+
+    # --- Contract number validation ---
+    @validator('contract_number')
+    def validate_contract_number_legal(cls, v, values): # pylint: disable=no-self-argument
+        """Validate contract number for legal entities (companies)."""
+        if not v:
+            raise ValueError("Contract number is required for legal entities")
+
+        contract_clean = v.strip()
+        if len(contract_clean) < 8:
+            raise ValueError(f"Contract number must be at least 8 characters long. Got: '{v}'")
+
+        if 'recipient_operator' in values and values['recipient_operator']:
+            operator_code = values['recipient_operator']
+            if not contract_clean.startswith(operator_code):
+                raise ValueError(
+                    f"Contract number must start with recipient operator code '{operator_code}'. Got: '{v}'"
+                )
+        return contract_clean
+
+    # --- Legal entity validation ---
+    @validator('subscriber')
+    def validate_legal_entity(cls, v): # pylint: disable=no-self-argument
+        """Ensure the subscriber is a company using CIF only."""
+        if v.subscriber_type != "company":
+            raise ValueError('This endpoint only supports legal entities (subscriber_type must be "company").')
+
+        doc_type = v.identification_document.document_type
+        if doc_type != "CIF":
+            raise ValueError(
+                f'Invalid document_type "{doc_type}" for company subscriber. Legal entities must use "CIF".'
+            )
+
+        if not v.personal_data.company_name:
+            raise ValueError('Company name is required for legal entity port-in requests.')
+
+        return v
+
+class PortInRequestLegal_02(PortInRequest):
+    """
+    Pydantic class to validate Port-In request payload for Legal Entities
+    Extends PortInRequest with legal entity specific validations
+    """
+    
+    # Override the subscriber field with legal entity specific validation
+    subscriber: SubscriberLegal = Field(
+        ...,
+        description="Legal entity subscriber data | WSDL: `<por:abonado>`",
+        example={
+            "subscriber_type": "company",
+            "identification_document": {
+                "document_type": "CIF",
+                "document_number": "A12345678"
+            },
+            "personal_data": {
+                "company_name": "MyCompany SL"
+            }
+        }
+    )
+    
+    # Override contract_number validation for corporate contracts
+    @validator('contract_number')
+    def validate_contract_number_legal(cls, v, values): # pylint: disable=no-self-argument
+        """Validate contract number for legal entities (companies)."""
+        if not v:
+            raise ValueError("Contract number is required")
+        
+        contract_clean = v.strip()
+        
+        # For legal entities, contract might be longer than 11 characters
+        # Adjust length validation if needed, or keep the same
+        if len(contract_clean) < 8:  # More flexible minimum length
+            raise ValueError(
+                f"Contract number must be at least 8 characters long for legal entities. "
+                f"Got: '{v}' (length: {len(contract_clean)})"
+            )
+        
+        # Check if starts with recipient operator code (if available)
+        if 'recipient_operator' in values and values['recipient_operator']:
+            operator_code = values['recipient_operator']
+            if not contract_clean.startswith(operator_code):
+                raise ValueError(
+                    f"Contract number must start with recipient operator code '{operator_code}'. "
+                    f"Got: '{v}'"
+                )
+        
+        return contract_clean
+    
+    # Add legal entity specific validation
+    @validator('subscriber')
+    def validate_legal_entity(cls, v): # pylint: disable=no-self-argument
+        """Ensure the subscriber is actually a legal entity"""
+        if v.subscriber_type != "company":
+            raise ValueError('This endpoint is only for legal entities. Subscriber type must be "company"')
+        
+        # Define valid document types
+        legal_document_types = ["CIF"]
+        personal_document_types = ["NIE", "DNI", "PASSPORT"]
+        
+        current_doc_type = v.identification_document.document_type
+        
+        # Check if using personal document type for company
+        if current_doc_type in personal_document_types:
+            raise ValueError(
+                f'Legal entities cannot use personal document type "{current_doc_type}". '
+                f'Must use one of: {", ".join(legal_document_types)}'
+            )
+        
+        # Check if using valid legal document type
+        if current_doc_type not in legal_document_types:
+            raise ValueError(
+                f'Invalid document type "{current_doc_type}" for legal entity. '
+                f'Must use one of: {", ".join(legal_document_types)}'
+            )
+        
+        # Validate company name is provided
+        if not v.personal_data.company_name:
+            raise ValueError('Company name (razonSocial) is required for legal entities')
+            
+        return v
+    
+@router.post(
+    '/port-in-legal', 
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(verify_basic_auth)],
+    response_model=PortInResponse,
+    summary="Submit Port-In Request for Legal Entities",
+    description="""
+    Submit a new number portability request (Port-In) for companies and legal entities.
+
+    This endpoint:
+    - Accepts the request from BSS for legal entities (companies, organizations)
+    - Saves it to the database immediately  
+    - Submit request to NC with legal entity data structure
+    - Returns NC response
+
+    299 CUBEMOVIL FMVNO - 552000000 to  552009999 – NRN(906299) - recipinet operator
+    798 CUBEMOVIL_FMVNO_DUMMY – 621800000 to 621899999 – NRN(704914) - donor operator
+    
+    **Workflow:**
+    1. Request validation and immediate database storage
+    2. Submit request to task queue for processing initiation
+    3. Async processing with Central Node using legal entity template
+    4. Status check task initiated from central schduler (pending_requests task)
+    """,
+    response_description="Request accepted and queued for processing",
+    tags=["Spain: Portability Operations"]
+)
+async def portin_request_legal(alta_data: PortInRequestLegal):
+    """
+    Port-In Number Portability Request for Legal Entities
+    
+    Processes mobile number portability requests for companies and organizations with comprehensive validation.
+    
+    **Key Validations:**
+    - MSISDN format (Spanish numbering plan)
+    - ICCID length and format
+    - Legal document type validation (CIF, etc.)
+    - Company name validation
+    - Date format and business logic
+    
+    **Background Processing:**
+    - Central node communication using legal entity template
+    - Operator coordination
+    - Status tracking
+    - Error handling and retries
+    """
+    start_time = time.time()
+    try:
+        logger.info("--- Processing port-in LEGAL request ---")
+        logger.info("subscriber_type: %s", alta_data.subscriber.subscriber_type)
+    
+        # Validate that this is actually a legal entity request
+        if alta_data.subscriber.subscriber_type != "company":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This endpoint is only for legal entities (companies). Use /port-in for individual requests."
+            )
+        
+        # Validate legal document types
+        legal_document_types = ["CIF", "NIF", "VAT"]
+        if alta_data.subscriber.identification_document.document_type not in legal_document_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid document type for legal entity. Must be one of: {', '.join(legal_document_types)}"
+            )
+        
+        # Validate company name is provided
+        if not alta_data.subscriber.personal_data.company_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Company name (razonSocial) is required for legal entities"
+            )
+
+        # Convert Pydantic model to dict for existing functions
+        alta_data_dict = alta_data.dict()
+        
+        # Add legal entity flag to the data
+        alta_data_dict['is_legal_entity'] = True
+        
+        # Conditional payload logging
+        log_payload('BSS', 'PORT_IN_LEGAL', 'REQUEST', str(alta_data_dict))
+
+        # 1. & 2. Create and save the DB record
+        # new_request_id = save_portability_request_new(alta_data_dict, 'PORT_IN', 'ESP')
+        new_request_id = save_portability_request_person_legal(alta_data_dict, 'PORT_IN', 'ESP')
+        if not new_request_id:
+           raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Failed to create portability request record"
+            )
+        logger.info("Port-in LEGAL request saved with ID: %s", new_request_id)
+        
+        # 3. Launch the background task, passing the ID of the new record
+        # submit_to_central_node_legal.delay(new_request_id) # Asynchronous version for legal entities
+        success, response_code, description, reference_code = submit_to_central_node_online(new_request_id)  # Synchronous version for legal entities
+
+        response_data = {
+            "id": new_request_id,
+            "success": success,
+            "response_code": response_code,
+            "description": description,
+            "reference_code": reference_code,
+            "entity_type": "LEGAL"
+        }
+
+        # Determine appropriate status code based on success and response_code
+        if success:
+            return response_data
+        else:
+            # Map different error types to appropriate HTTP status codes
+            if response_code in ["NOT_FOUND", "VALIDATION_ERROR"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=response_data
+                )
+            elif response_code == "HTTP_ERROR":
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=response_data
+                )
+            elif response_code == "ACCS PERME":  # Outside business hours
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=response_data
+                )
+            elif re.match(r"^AREC", (response_code or "")):  # All AREC errors
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=response_data
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=response_data
+                )
+        
+    except HTTPException:
+        # Re-raise existing HTTP exceptions
+        raise
+        
+    except ValueError as e:
+        # Data validation errors
+        logger.warning("Validation error in legal port-in: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid request: {str(e)}"
+        ) from e
+        
+    except Exception as e:
+        # All other unexpected errors
+        logger.error("Server error processing legal port-in: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error processing legal entity request"
+        ) from e
+    
+    finally:
+        processing_time = time.time() - start_time
+        record_port_in_processing_time(processing_time)

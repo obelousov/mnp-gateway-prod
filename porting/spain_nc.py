@@ -122,6 +122,8 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         logger.debug("PORT_IN_RESPONSE<-NC:\n%s", str(response.text))
         
         result = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+        # result = parse_soap_response_dict(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+        logger.debug("Parsed SOAP response: %s", str(result))
         if result and len(result) == 3:
             response_code, description, reference_code = result
         else:

@@ -388,6 +388,7 @@ def save_portability_request_new(alta_data: dict, request_type: str = 'PORT_IN',
 
         print(f"save_portability_request(): Inserting new portability request into database with session_code: {alta_data.get('session_code')}")
         logger.debug("save_portability_request(): Inserting new portability request into database with session_code: %s", alta_data.get('session_code'))
+        logger.debug("save_portability_request(): Inserting new portability request: %s", alta_data)
         
         insert_query = """
         INSERT INTO portability_requests (
@@ -738,6 +739,139 @@ def check_if_port_out_request_in_db(request_data: dict) -> bool:
     except Exception as e:
         logger.error("Error checking reference_code '%s' in portout_request: %s", reference_code, str(e))
         return False
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+def save_portability_request_person_legal(alta_data: dict, request_type: str = 'PORT_IN', country_code: str = "ESP") -> int:
+    """
+    Save portability request (either person or legal entity) into portability_requests table.
+    """
+    connection = None
+    cursor = None
+
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        subscriber_data = alta_data.get('subscriber', {})
+        doc_data = subscriber_data.get('identification_document', {})
+        personal_data = subscriber_data.get('personal_data', {})
+
+        # --- Determine entity type ---
+        is_legal_entity = bool(alta_data.get('is_legal_entity', False))
+        subscriber_type = subscriber_data.get('subscriber_type', 'person')
+        is_legal_entity_val = 1 if (is_legal_entity or subscriber_type == 'company') else 0
+
+        logger.debug("---- save_portability_request_person_legal(): %s", alta_data)
+
+        # --- Handle company vs person ---
+        if is_legal_entity_val:
+            company_name_val = personal_data.get('company_name') or alta_data.get('company_name') or 'UNKNOWN_COMPANY'
+            first_name = company_name_val
+            first_surname = ''
+            second_surname = ''
+            name_surname = company_name_val
+        else:
+            first_name = personal_data.get('first_name', 'UNKNOWN_SUBSCRIBER')
+            first_surname = personal_data.get('first_surname', '')
+            second_surname = personal_data.get('second_surname', '')
+            name_surname = f"{first_name} {first_surname} {second_surname}".strip()
+            company_name_val = None
+
+        status_bss = "PROCESSING"
+        status_nc = "PENDING_SUBMIT"
+
+        # --- Calculate scheduled_at ---
+        initial_delta = timedelta(seconds=-5)
+        _, _, scheduled_at = calculate_countdown_working_hours(
+            delta=initial_delta,
+            with_jitter=False
+        )
+
+        insert_query = """
+        INSERT INTO portability_requests (
+            country_code, request_type, session_code,
+            donor_operator, recipient_operator,
+            document_type, document_number,
+            contract_number, routing_number,
+            desired_porting_date, iccid, msisdn,
+            status_bss, status_nc, scheduled_at, requested_at,
+            first_name, first_surname, second_surname, nationality,
+            subscriber_type, is_legal_entity, company_name, name_surname
+        ) VALUES (
+            %s, %s, %s,
+            %s, %s,
+            %s, %s,
+            %s, %s,
+            %s, %s, %s,
+            %s, %s, %s, %s,
+            %s, %s, %s, %s,
+            %s, %s, %s, %s
+        )
+        """
+
+        values = (
+            country_code,
+            request_type,
+            alta_data.get('session_code'),
+            alta_data.get('donor_operator'),
+            alta_data.get('recipient_operator'),
+            doc_data.get('document_type'),
+            doc_data.get('document_number'),
+            alta_data.get('contract_number'),
+            alta_data.get('routing_number'),
+            alta_data.get('desired_porting_date'),
+            alta_data.get('iccid'),
+            alta_data.get('msisdn'),
+            status_bss,
+            status_nc,
+            scheduled_at,
+            alta_data.get('requested_at'),
+            first_name,
+            first_surname,
+            second_surname,
+            personal_data.get('nationality', 'ESP'),
+            subscriber_type,
+            is_legal_entity_val,
+            company_name_val,
+            name_surname
+        )
+
+        logger.debug(
+            "Executing INSERT: company_name=%s | is_legal_entity=%s | subscriber_type=%s",
+            company_name_val, is_legal_entity_val, subscriber_type
+        )
+
+        cursor.execute(insert_query, values)
+        connection.commit()
+
+        new_request_id = cursor.lastrowid
+        logger.info(
+            "Inserted new portability request with ID: %s, Type: %s",
+            new_request_id,
+            'LEGAL' if is_legal_entity_val else 'PERSONAL'
+        )
+
+        return new_request_id
+
+    except Error as e:
+        if connection:
+            connection.rollback()
+
+        if getattr(e, "errno", None) == 1364:
+            msg = str(e)
+            if "Field '" in msg:
+                field_name = msg.split("Field '")[1].split("' doesn't")[0]
+                logger.error("Missing required field '%s' in DB insert", field_name)
+                raise ValueError(f"Missing required field: {field_name}") from e
+            raise ValueError("Missing required field in database insert") from e
+        else:
+            logger.error("MySQL error (%s): %s", getattr(e, "errno", "?"), e)
+            raise
 
     finally:
         if cursor:
