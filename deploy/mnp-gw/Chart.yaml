@@ -1,0 +1,4 @@
+apiVersion: v2
+name: mnp-gw
+version: 0.1.0 # will be overwritten from Jenkinsfile
+appVersion: "1" # will be overwritten from Jenkinsfile
