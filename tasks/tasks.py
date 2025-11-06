@@ -324,7 +324,7 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
                 log_payload('NC', 'CHECK_STATUS', 'RESPONSE', str(response.text))
                 logger.debug("STATUS_CHECK_RESPONSE<-NC:\n%s", str(response.text))
                 logger.debug("estado %s, estado_old %s status_chnaged %s ",estado, estado_old, status_changed)
-                logger.debug("ENTER callback_bss_status_changed:")
+                logger.debug("ENTER callback_bss_status_changed: %s",reference_code)
                 callback_bss.delay(
                     mnp_request_id,
                     reference_code,
@@ -372,11 +372,24 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
 
             status_changed = (status_nc != status_nc_old)    # callback_bss.delay(mnp_request_id)
             if status_changed:
-                logger.debug("ENTER callback_bss:")
+                logger.debug("ENTER callback_bss_status_changed:%s", reference_code)
                 # callback_bss.delay(mnp_request_id, reference_code, session_code_bss, estado, msisdn, response_code, description=None, error_fields=None, porting_window_date=None)
-                callback_bss_online(mnp_request_id, reference_code, reject_code, session_code_bss, estado, msisdn, response_code, description, porting_window_db, error_fields=None)
+                # callback_bss_online(mnp_request_id, reference_code, reject_code, session_code_bss, estado, msisdn, response_code, description, porting_window_db, error_fields=None)
+                callback_bss.delay(
+                    mnp_request_id,
+                    reference_code,
+                    reject_code,         
+                    session_code_bss,
+                    estado,
+                    msisdn,
+                    response_code,
+                    description,
+                    porting_window_date=porting_window_db,
+                    error_fields=None
+                )
 
-            return "Final status received for id: %s, status: %s", mnp_request_id, estado
+
+            return "Final status received for id: %s, ref_code: %s status: %s", mnp_request_id, reference_code, estado
             
                 # Check if status actually changed
         # status_changed = (status_nc != status_nc_old)    # callback_bss.delay(mnp_request_id)
@@ -413,8 +426,8 @@ def callback_bss(self, mnp_request_id, reference_code, reject_code, session_code
         error_fields: Optional list of error field objects
         porting_window_date: Optional porting window date
     """
-    logger.debug("ENTER callback_bss_self() with request_id %s reference_code %s response_status %s reject_code %s", 
-                 mnp_request_id, reference_code, response_status, reject_code)
+    logger.debug("ENTER callback_bss_self() with request_id %s nsisdn %s reference_code %s response_status %s reject_code %s", 
+                 mnp_request_id, msisdn, reference_code, response_status, reject_code)
     
     # Convert datetime to string for JSON payload
     porting_window_str = porting_window_date.isoformat() if porting_window_date else ""

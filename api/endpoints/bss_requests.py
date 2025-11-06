@@ -1194,9 +1194,10 @@ async def reject_port_out_request(request: RejectPortOutRequest):
         # Convert Pydantic model to dict for existing functions
         alta_data = request.dict()
         # Convert enum to its string value
-        if 'cancellation_reason' in alta_data and alta_data['cancellation_reason']:
-            # alta_data['cancellation_reason'] = alta_data['cancellation_reason'].value
-            alta_data['cancellation_reason'] = alta_data['cancellation_reason']
+        alta_data['cancellation_reason'] = request.cancellation_reason.value  # Direct access with .value
+        # if 'cancellation_reason' in alta_data and alta_data['cancellation_reason']:
+        #     # alta_data['cancellation_reason'] = alta_data['cancellation_reason'].value
+        #     alta_data['cancellation_reason'] = alta_data['cancellation_reason']
 
         # 1. Log the incoming payload
         # log_payload('BSS', 'PORT_OUT_REJECT', 'REQUEST', str(alta_data))
