@@ -64,8 +64,8 @@ CREATE TABLE `portability_requests` (
   `request_code` varchar(100) DEFAULT NULL COMMENT 'Internal request identifier',
   `status_bss` varchar(50) DEFAULT 'PROCESSING' COMMENT 'BSS system status',
   `status_nc` varchar(50) DEFAULT 'PENDING' COMMENT 'NC system status',
-  `response_code` varchar(10) DEFAULT '' COMMENT 'coddigoRespuesta',
-  `response_status` varchar(10) DEFAULT '' COMMENT 'Latest response code from NC',
+  `response_code` varchar(20) DEFAULT '' COMMENT 'coddigoRespuesta',
+  `response_status` varchar(20) DEFAULT '' COMMENT 'Latest response code from NC',
   `reject_code` varchar(10) DEFAULT '' COMMENT 'reject status eg RECH_BNUME RECH_PERDI RECH_IDENT RECH_ICCID',
   `description` varchar(1000) DEFAULT NULL,
   `retry_count` int(11) DEFAULT 0,
@@ -94,6 +94,8 @@ CREATE TABLE `portability_requests` (
   `completed_at` timestamp NULL DEFAULT NULL COMMENT 'When request completed',
   `created_at` timestamp NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `is_legal_entity` tinyint(1) NOT NULL DEFAULT 0 COMMENT 'Flag indicating if this is a legal entity (1) or individual (0)',
+  `company_name` varchar(255) DEFAULT NULL COMMENT 'Company name for legal entities',
   PRIMARY KEY (`id`),
   KEY `idx_country_type` (`country_code`,`request_type`),
   KEY `idx_status_composite` (`status_nc`,`status_bss`,`scheduled_at`),
@@ -106,6 +108,63 @@ CREATE TABLE `portability_requests` (
   KEY `idx_completion` (`completed_at`,`country_code`),
   KEY `idx_document` (`document_type`,`document_number`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Mobile number portability requests (IN/OUT/CANCEL/MULTISIM)';
+
+DROP TABLE IF EXISTS `portout_metadata`;
+CREATE TABLE `portout_metadata` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `response_code` varchar(50) DEFAULT NULL,
+  `response_description` varchar(255) DEFAULT NULL,
+  `paged_request_code` varchar(100) DEFAULT NULL,
+  `total_records` int(11) DEFAULT NULL,
+  `is_last_page` tinyint(1) DEFAULT NULL,
+  `received_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_response_code` (`response_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+DROP TABLE IF EXISTS `portout_request`;
+CREATE TABLE `portout_request` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `metadata_id` bigint(20) NOT NULL,
+  `notification_id` varchar(50) DEFAULT NULL,
+  `creation_date` datetime DEFAULT NULL,
+  `synchronized` tinyint(1) DEFAULT NULL,
+  `reference_code` varchar(50) DEFAULT NULL,
+  `status_bss` varchar(50) DEFAULT NULL,
+  `submitted_to_bss` tinyint(1) DEFAULT 0 COMMENT '0 - not subitted ,1 - submitted',
+  `status_nc` varchar(50) DEFAULT NULL,
+  `status` varchar(10) DEFAULT NULL,
+  `response_code` varchar(10) DEFAULT NULL,
+  `description` varchar(200) DEFAULT NULL COMMENT 'descroption with return NC on reject or confirm',
+  `state_date` datetime DEFAULT NULL,
+  `creation_date_request` datetime DEFAULT NULL,
+  `reading_mark_date` datetime DEFAULT NULL,
+  `state_change_deadline` datetime DEFAULT NULL,
+  `subscriber_request_date` datetime DEFAULT NULL,
+  `donor_operator_code` varchar(10) DEFAULT NULL,
+  `receiver_operator_code` varchar(10) DEFAULT NULL,
+  `extraordinary_donor_activation` tinyint(1) DEFAULT NULL,
+  `contract_code` varchar(100) DEFAULT NULL,
+  `receiver_NRN` varchar(50) DEFAULT NULL,
+  `port_window_date` datetime DEFAULT NULL,
+  `port_window_by_subscriber` tinyint(1) DEFAULT NULL,
+  `MSISDN` varchar(20) DEFAULT NULL,
+  `subscriber_type` varchar(20) DEFAULT 'person' COMMENT 'person or legal',
+  `subscriber_id_type` varchar(10) DEFAULT NULL,
+  `subscriber_id_number` varchar(30) DEFAULT NULL,
+  `subscriber_first_name` varchar(100) DEFAULT NULL,
+  `subscriber_last_name_1` varchar(100) DEFAULT NULL,
+  `subscriber_last_name_2` varchar(100) DEFAULT NULL,
+  `company_name` varchar(100) DEFAULT NULL,
+  `scheduled_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_metadata_id` (`metadata_id`),
+  KEY `idx_msisdn` (`MSISDN`),
+  KEY `idx_reference_code` (`reference_code`),
+  CONSTRAINT `portout_request_ibfk_1` FOREIGN KEY (`metadata_id`) REFERENCES `portout_metadata` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 flower:
 http://localhost:5555/
@@ -128,3 +187,7 @@ root@b56786830fcc:/app# python -m tests.nc_qeries
 
 docker exec mnp-api python -m tests.nc_qeries
 
+url to submit queries from app
+https://sms2email.olbe.tech/webhook_receiver
+here can see body of requests sent from mnp-gateway app
+https://sms2email.olbe.tech/webhook_dashboard
