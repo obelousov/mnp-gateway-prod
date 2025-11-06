@@ -89,7 +89,7 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
             with_jitter=True)
         a_seconds = int(a.total_seconds())
 
-        if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION"]:
+        if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION",""]:
             if request_type == "CANCELLATION" and response_status not in ['ACAN',"400","404"]:
                 submit_to_central_node_cancel.apply_async(
                     args=[request_id],

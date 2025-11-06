@@ -391,8 +391,8 @@ def calculate_countdown_working_hours(delta, with_jitter=True):
         final_countdown = base_countdown + jitter_seconds
         actual_execution_time = now + timedelta(seconds=final_countdown)
         
-        logger.info("Working Hrs Countdown: %s | Window: %s | Execution: %s", 
-                    status, time_window, actual_execution_time)
+        # logger.info("Working Hrs Countdown: %s | Window: %s | Execution: %s", 
+        #             status, time_window, actual_execution_time)
 
         # return timedelta(seconds=final_countdown), status, actual_execution_time
         return timedelta(seconds=final_countdown), status, actual_execution_time.replace(microsecond=0)

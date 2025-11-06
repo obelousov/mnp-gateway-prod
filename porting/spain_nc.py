@@ -802,3 +802,109 @@ def submit_to_central_node_port_out_confirm(alta_data: dict) -> Tuple[bool, Opti
             #     pass
         if connection and connection.is_connected():
             connection.close()
+
+def callback_bss_online(mnp_request_id, reference_code, reject_code, session_code, response_status, msisdn, response_code, description, porting_window_date, error_fields=None):
+    """
+    REST JSON POST to BSS Webhook with updated English field names
+    
+    Args:
+        mnp_request_id: Unique identifier for the MNP request
+        session_code: Session code for the transaction (same received in initial query from BSS)
+        reference_code: codigoreferencia - assigned by NC
+        msisdn: Mobile number
+        response_code: codigoRespoesta (eg 0000 0000/AREC NRNRE/AREC NRNRE)
+        callback_bss: causaRechazo (RECH_BNUME,RECH_PERDI,RECH_IDENT,RECH_ICCID,RECH TIEMP,RECH_FMAYO)
+        response_status: estado (ASOL/APOR/AREC)
+        description: Optional description message
+        error_fields: Optional list of error field objects
+        porting_window_date: Optional porting window date
+    """
+    logger.debug("ENTER callback_bss() with request_id %s reference_code %s response_status %s reject_code %s", 
+                 mnp_request_id, reference_code, response_status, reject_code)
+    
+    # Convert datetime to string for JSON payload
+    porting_window_str = porting_window_date.isoformat() if porting_window_date else ""
+    # Prepare JSON payload with new English field names
+    payload = {
+        "request_id": mnp_request_id,
+        "session_code": session_code,
+        "reference_code":reference_code,
+        "reject_code":reject_code,
+        "msisdn": msisdn,
+        "response_code": response_code,
+        "response_status": response_status,
+        "description": description or f"Status update for MNP request {mnp_request_id}",
+        "error_fields": error_fields or [],
+        "porting_window_date": porting_window_str or ""
+    }
+   
+    logger.debug("Webhook payload being sent: %s", payload)
+    # print(f"Webhook payload being sent: {payload}")
+    
+    try:
+        # Send POST request
+        response = requests.post(
+            settings.BSS_WEBHOOK_URL,
+            json=payload,
+            headers=settings.get_headers_bss(),
+            timeout=settings.APIGEE_API_QUERY_TIMEOUT,
+            verify=settings.SSL_VERIFICATION  # Use SSL verification setting
+        )
+        
+        # Check if request was successful
+        if response.status_code == 200:
+            logger.info(
+                "Webhook sent successfully for request_id %s session %s, response_code: %s", 
+                mnp_request_id, session_code, response_status
+            )
+
+            # Update database with the actual scheduled time
+            try: 
+                update_query = """
+                    UPDATE portability_requests 
+                    SET status_bss = %s,
+                    updated_at = NOW() 
+                    WHERE id = %s
+                """
+                connection = get_db_connection()
+                cursor = connection.cursor(dictionary=True)
+                
+                # Map response_code to appropriate status_bss value
+                # status_bss="CANCEL_REQUEST_COMPLETED" if response_status=="ACAN" else "NO_RESPONSE_ON CANCEL_RESPONSE"
+                status_bss = "STATUS_UPDATED_TO_" + response_status.upper()
+                # status_bss = self._map_response_to_status(response_status)
+                cursor.execute(update_query, (status_bss, mnp_request_id))
+                connection.commit()
+                
+                logger.debug(
+                    "Database updated for request %s with status_bss: %s", 
+                    mnp_request_id, status_bss
+                )
+                return True
+                
+            except Exception as db_error:
+                logger.error("Database update failed for request %s: %s", mnp_request_id, str(db_error))
+                return False
+        else:
+            logger.error(
+                "Webhook failed for session %s request_id: %s Status: %s, Response: %s", 
+                session_code, mnp_request_id, response.status_code, response.text
+            )
+            return False
+            
+    except requests.exceptions.Timeout as exc:
+        logger.error("Webhook timeout for session %s request_id %s", session_code, mnp_request_id)
+        # self.retry(exc=exc, countdown=120)
+        return False
+    except requests.exceptions.ConnectionError as exc:
+        logger.error("Webhook connection error for session %s request_id %s", session_code, mnp_request_id)
+        # self.retry(exc=exc, countdown=120)
+        return False
+    except requests.exceptions.RequestException as exc:
+        logger.error("Webhook error for session %s request_id %s: %s", session_code, mnp_request_id, str(exc))
+        # self.retry(exc=exc, countdown=120)
+        return False
+    finally:
+        if 'connection' in locals() and connection and connection.is_connected():
+            cursor.close()
+            connection.close()

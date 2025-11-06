@@ -19,7 +19,7 @@ from config import settings
 from services.time_services import calculate_countdown_working_hours, normalize_datetime
 # from services.logger import logger
 from services.logger_simple import log_payload, logger
-from porting.spain_nc import initiate_session
+from porting.spain_nc import initiate_session, callback_bss_online
 
 WSDL_SERVICE_SPAIN_MOCK = settings.WSDL_SERVICE_SPAIN_MOCK
 WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = settings.WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS
@@ -221,7 +221,8 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
         
         consultar_payload = create_status_check_soap_nc(mnp_request_id, session_code, msisdn)  # Check status request SOAP
         # Conditional payload logging
-        # log_payload('NC', 'CHECK_STATUS', 'REQUEST', str(consultar_payload))
+        log_payload('NC', 'CHECK_STATUS', 'REQUEST', str(consultar_payload))
+        logger.debug("STATUS_CHECK_REQUEST->NC:\n%s", str(consultar_payload))
 
         # if not WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS:
         #     raise ValueError("WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS environment variable is not set.")
@@ -273,6 +274,8 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
         #     (response_code, description, reference_code, estado))
 
         # log_payload('NC', 'CHECK_STATUS', 'RESPONSE', str(response.text))
+        # log_payload('NC', 'CHECK_STATUS', 'RESPONSE', str(response.text))
+        # logger.debug("STATUS_CHECK_RESPONSE<-NC:\n%s", str(response.text))
 
         status_nc =""
         # If it's still pending, queue the next check during working hours
@@ -303,13 +306,37 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
             status_changed = (estado != estado_old)    # callback_bss.delay(mnp_request_id)
             # logger.debug("estado %s, estado_old %s status_chnaged %s ",estado, estado_old, status_changed)
             # print(f"estado {estado}, estado_old {estado_old}, status_chnaged {status_changed}")
+            # logger.debug("ENTER callback_bss_1:")
+            # callback_bss.delay(
+            #     mnp_request_id,
+            #     reference_code,
+            #     reject_code,         # <-- Add this
+            #     session_code_bss,
+            #     estado,
+            #     msisdn,
+            #     response_code,
+            #     description,
+            #     porting_window_date=porting_window_db,
+            #     error_fields=None
+            # )
+
             if status_changed:
                 log_payload('NC', 'CHECK_STATUS', 'RESPONSE', str(response.text))
-                logger.debug("STATUS_CHECK_RESPONSE<-NC:\%s", str(response.text))
+                logger.debug("STATUS_CHECK_RESPONSE<-NC:\n%s", str(response.text))
                 logger.debug("estado %s, estado_old %s status_chnaged %s ",estado, estado_old, status_changed)
-                # logger.debug("ENTER callback_bss:")
-                # callback_bss.delay(mnp_request_id, reference_code, session_code_bss, estado, msisdn, response_code, description, error_fields=None, porting_window_date=porting_window_db)
-                callback_bss.delay(mnp_request_id, reference_code, session_code_bss, estado, msisdn, response_code, description, porting_window_db, error_fields=None)
+                logger.debug("ENTER callback_bss_status_changed:")
+                callback_bss.delay(
+                    mnp_request_id,
+                    reference_code,
+                    reject_code,         
+                    session_code_bss,
+                    estado,
+                    msisdn,
+                    response_code,
+                    description,
+                    porting_window_date=porting_window_db,
+                    error_fields=None
+                )
 
             return "Scheduled next check for id: %s at %s", mnp_request_id, scheduled_datetime
 
@@ -347,7 +374,7 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
             if status_changed:
                 logger.debug("ENTER callback_bss:")
                 # callback_bss.delay(mnp_request_id, reference_code, session_code_bss, estado, msisdn, response_code, description=None, error_fields=None, porting_window_date=None)
-                callback_bss.delay(mnp_request_id, reference_code, reject_code, session_code_bss, estado, msisdn, response_code, description, porting_window_db, error_fields=None)
+                callback_bss_online(mnp_request_id, reference_code, reject_code, session_code_bss, estado, msisdn, response_code, description, porting_window_db, error_fields=None)
 
             return "Final status received for id: %s, status: %s", mnp_request_id, estado
             
@@ -386,7 +413,7 @@ def callback_bss(self, mnp_request_id, reference_code, reject_code, session_code
         error_fields: Optional list of error field objects
         porting_window_date: Optional porting window date
     """
-    logger.debug("ENTER callback_bss() with request_id %s reference_code %s response_status %s reject_code %s", 
+    logger.debug("ENTER callback_bss_self() with request_id %s reference_code %s response_status %s reject_code %s", 
                  mnp_request_id, reference_code, response_status, reject_code)
     
     # Convert datetime to string for JSON payload
@@ -405,9 +432,10 @@ def callback_bss(self, mnp_request_id, reference_code, reject_code, session_code
         "porting_window_date": porting_window_str or ""
     }
    
-    logger.debug("Webhook payload being sent: %s", payload)
+    logger.debug("Webhook payload from task being sent: %s", payload)
     # print(f"Webhook payload being sent: {payload}")
-    
+    bss_webhook_url = settings.BSS_WEBHOOK_URL
+
     try:
         # Send POST request
         response = requests.post(
@@ -421,8 +449,8 @@ def callback_bss(self, mnp_request_id, reference_code, reject_code, session_code
         # Check if request was successful
         if response.status_code == 200:
             logger.info(
-                "Webhook sent successfully for request_id %s session %s, response_code: %s", 
-                mnp_request_id, session_code, response_status
+                "Webhook sent successfully from task for request_id %s session %s, response_code: %s to webhook %s", 
+                mnp_request_id, session_code, response_status, bss_webhook_url
             )
 
             # Update database with the actual scheduled time
