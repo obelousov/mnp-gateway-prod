@@ -20,6 +20,7 @@ from services.time_services import calculate_countdown_working_hours, normalize_
 # from services.logger import logger
 from services.logger_simple import log_payload, logger
 from porting.spain_nc import initiate_session, callback_bss_online
+import json
 
 WSDL_SERVICE_SPAIN_MOCK = settings.WSDL_SERVICE_SPAIN_MOCK
 WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = settings.WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS
@@ -448,17 +449,27 @@ def callback_bss(self, mnp_request_id, reference_code, reject_code, session_code
     logger.debug("Webhook payload from task being sent: %s", payload)
     # print(f"Webhook payload being sent: {payload}")
     bss_webhook_url = settings.BSS_WEBHOOK_URL
+    json_payload = json.dumps(payload, ensure_ascii=False)
 
     try:
         # Send POST request
+        # response = requests.post(
+        #     settings.BSS_WEBHOOK_URL,
+        #     json=payload,
+        #     headers=settings.get_headers_bss(),
+        #     timeout=settings.APIGEE_API_QUERY_TIMEOUT,
+        #     verify=settings.SSL_VERIFICATION  # Use SSL verification setting
+        # )
         response = requests.post(
             settings.BSS_WEBHOOK_URL,
-            json=payload,
+            data=json_payload,
             headers=settings.get_headers_bss(),
             timeout=settings.APIGEE_API_QUERY_TIMEOUT,
             verify=settings.SSL_VERIFICATION  # Use SSL verification setting
         )
-        
+
+        # data=json_payload,
+
         # Check if request was successful
         if response.status_code == 200:
             logger.info(
@@ -583,18 +594,28 @@ def callback_bss_portout(self,parsed_data):
         logger.debug("callback_bss_portout payload: %s", payload)
         # print(f"Webhook payload being sent: {payload}")
         bss_webhook_port_out =settings.BSS_WEBHOOK_PORT_OUT_URL
+        json_payload = json.dumps(payload, ensure_ascii=False)
         
         try:
             # Send POST request
+            # response = requests.post(
+            #     # settings.BSS_WEBHOOK_URL,
+            #     bss_webhook_port_out,
+            #     json=payload,
+            #     headers=settings.get_headers_bss(),
+            #     timeout=settings.APIGEE_API_QUERY_TIMEOUT,
+            #     verify=settings.SSL_VERIFICATION  # Use SSL verification setting
+            # )
+
             response = requests.post(
                 # settings.BSS_WEBHOOK_URL,
                 bss_webhook_port_out,
-                json=payload,
+                data=json_payload,
                 headers=settings.get_headers_bss(),
                 timeout=settings.APIGEE_API_QUERY_TIMEOUT,
                 verify=settings.SSL_VERIFICATION  # Use SSL verification setting
             )
-            
+
             # Check if request was successful
             if response.status_code == 200:
                 logger.info(
