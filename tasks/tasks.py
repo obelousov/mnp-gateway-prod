@@ -50,7 +50,13 @@ def submit_to_central_node(self, mnp_request_id):
     Task to submit a porting request to the Central Node.
     This runs in the background.
     """
-    logger.debug("ENTER submit_to_central_node with req_id %s", mnp_request_id)
+    logger.debug("ENTER submit_to_central_node offline with req_id %s", mnp_request_id)
+    APIGEE_PORTABILITY_URL = settings.APIGEE_PORTABILITY_URL
+
+    success = False
+    response_code = None
+    description = None
+    reference_code = None
     connection = None
     cursor = None
 
@@ -80,76 +86,120 @@ def submit_to_central_node(self, mnp_request_id):
         # 3. Prepare your SOAP envelope (use your existing logic)
         # print(f"Submit to NC: Request {mnp_request} found, preparing SOAP payload...")
 
+        session_code = initiate_session()
+        
         # Convert JSON to SOAP request
-        # soap_request = json_to_soap_request(mnp_request)
         logger.debug("Submit to NC: Generated SOAP Request:")
-        # soap_payload = json_from_db_to_soap(mnp_request)  # function to create SOAP
-        soap_payload = json_from_db_to_soap_new(mnp_request)  # function to create SOAP
-        # print(soap_payload)
+        # soap_payload = json_from_db_to_soap_new(mnp_request)  # function to create SOAP
+        soap_payload = json_from_db_to_soap_online(mnp_request, session_code)
         # Conditional payload logging
         log_payload('NC', 'PORT_IN', 'REQUEST', str(soap_payload))
         logger.debug("PORT_IN_REQUEST->NC:\n%s", str(soap_payload))
 
         # 4. Try to send the request to Central Node
-        if not WSDL_SERVICE_SPAIN_MOCK:
-            raise ValueError("WSDL_SERVICE_SPAIN_MOCK environment variable is not set.")
+        if not APIGEE_PORTABILITY_URL:
+             raise ValueError("APIGEE_PORTABILITY_URL environment variable is not set.")
         current_retry = self.request.retries
         logger.info("Attempt %d for request %s", current_retry+1, mnp_request_id)
         print(f"Submit to NC: Attempt {current_retry+1} for request {mnp_request_id}")
 
-        response = requests.post(WSDL_SERVICE_SPAIN_MOCK, 
-                               data=soap_payload,
-                               headers=settings.get_soap_headers('IniciarSesion'),
-                               timeout=settings.APIGEE_API_QUERY_TIMEOUT)
+        # response = requests.post(WSDL_SERVICE_SPAIN_MOCK, 
+        #                        data=soap_payload,
+        #                        headers=settings.get_soap_headers('IniciarSesion'),
+        #                        timeout=settings.APIGEE_API_QUERY_TIMEOUT)
+        response = requests.post(
+            APIGEE_PORTABILITY_URL, 
+            data=soap_payload,
+            headers=settings.get_soap_headers('CrearSolicitudIndividualAltaPortabilidadMovil'),
+            timeout=settings.APIGEE_API_QUERY_TIMEOUT
+        )
+
         response.raise_for_status()
 
         # 5. Parse the SOAP response (use your existing logic)
         # session_code, status = parse_soap_response_list(response.text,)
         response_code, description, reference_code = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
-        print(f"Submit to NC: Received response: response_code={response_code}, description={description}, reference_code={reference_code}")
 
         # Conditional payload logging
         log_payload('NC', 'PORT_IN', 'RESPONSE', str(response.text))
         logger.debug("PORT_IN_RESPONSE<-NC:\n%s", str(response.text))
 
-        # Assign status based on response_code
-        if not response_code or not response_code.strip():
-            status_nc = "PENDING_NO_RESPONSE_CODE_RECEIVED"
+        result = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+
+        if result and len(result) == 3:
+            response_code, description, reference_code = result
         else:
-            response_code_upper = response_code.strip().upper()
-            status_nc = "PENDING_RESPONSE" if response_code_upper == 'ASOL' else "PENDING_CONFIRMATION"
+            # Handle the case where parsing failed
+            response_code, description, reference_code = None, None, None
+            if result:
+                logger.error("Failed to parse SOAP response properly for request %s. Expected 3 values, got %s", 
+                            mnp_request_id, len(result))
+            else:
+                logger.error("Failed to parse SOAP response properly for request %s. Result is None", mnp_request_id)
+
+        # Determine success based on response code
+        if response_code == "0000 00000":  # Adjust this condition based on your actual success codes
+            status_nc = 'RE_SUBMITTED'
+            status_bss = 'PROCESSING'
+            logger.info("Success response from NC id %s response_code %s, description %s reference_code %s", mnp_request_id, response_code, description, reference_code)
+            success = True
+        else:
+            status_nc = 'PORT_IN_REJECTED'
+            status_bss = 'REJECT_FROM_NC_SUBMITTED_TO_BSS'
+            success = False
+            logger.error("Error response from NC id %s response_code %s description %s", mnp_request_id, response_code, description)
+
+        # 6. Update database with response
+        update_query = """
+            UPDATE portability_requests 
+            SET status_nc = %s, session_code_nc = %s, status_bss = %s, response_code = %s, description = %s, reference_code = %s, updated_at = NOW() 
+            WHERE id = %s
+        """        
+        cursor.execute(update_query, (status_nc,session_code, status_bss, response_code, description, reference_code,mnp_request_id))
+        connection.commit()
+
+        # callbsck bss will raise upon above chnaged status 
+        return success, response_code, description, reference_code
+
+        
+        # Assign status based on response_code
+        # if not response_code or not response_code.strip():
+        #     status_nc = "PENDING_NO_RESPONSE_CODE_RECEIVED"
+        # else:
+        #     response_code_upper = response_code.strip().upper()
+        #     status_nc = "PENDING_RESPONSE" if response_code_upper == 'ASOL' else "PENDING_CONFIRMATION"
 
         # Check if status actually changed
-        status_changed = (status_nc != status_nc_old)
+        # status_changed = (status_nc != status_nc_old)
 
-        if status_changed:
-            if status_nc == "PENDING_RESPONSE":
-            # Special handling for ASOL status - reschedule at the next timeband
-                _, scheduled_at = calculate_countdown(with_jitter=True)
-                logger.info("Status changed to PENDING_RESPONSE (ASOL), rescheduling for %s", scheduled_at)
+        # if status_changed:
+        #     if status_nc == "PENDING_RESPONSE":
+        #     # Special handling for ASOL status - reschedule at the next timeband
+        #         _, scheduled_at = calculate_countdown(with_jitter=True)
+        #         logger.info("Status changed to PENDING_RESPONSE (ASOL), rescheduling for %s", scheduled_at)
         
-                update_query = """
-                    UPDATE portability_requests 
-                    SET status_nc = %s, scheduled_at = %s, response_status = %s, reference_code = %s, description = %s, updated_at = NOW() 
-                    WHERE id = %s
-                    """
-                cursor.execute(update_query, (status_nc, scheduled_at, response_code, reference_code, description, mnp_request_id))
-                connection.commit()
-        else:
-            # Should not come here normally, but just in case 
-            logger.info("No status change for request %s", mnp_request_id)
-            initial_delta = timedelta(seconds=PENDING_REQUESTS_TIMEOUT)  # try again in 60 seconds
-            _, _, scheduled_at = calculate_countdown_working_hours(
-                        delta=initial_delta, 
-                        with_jitter=True)
-             # Update the database with response
-            update_query = """
-                        UPDATE portability_requests 
-                        SET response_status = %s, description = %s, status_nc = %s, scheduled_at = %s, updated_at = NOW() 
-                        WHERE id = %s
-                        """
-            cursor.execute(update_query, (response_code, description, status_nc, scheduled_at, mnp_request_id))
-            connection.commit()
+        #         update_query = """
+        #             UPDATE portability_requests 
+        #             SET status_nc = %s, scheduled_at = %s, response_status = %s, reference_code = %s, description = %s, updated_at = NOW() 
+        #             WHERE id = %s
+        #             """
+        #         cursor.execute(update_query, (status_nc, scheduled_at, response_code, reference_code, description, mnp_request_id))
+        #         connection.commit()
+        # else:
+        #     # Should not come here normally, but just in case 
+        #     logger.info("No status change for request %s", mnp_request_id)
+        #     initial_delta = timedelta(seconds=PENDING_REQUESTS_TIMEOUT)  # try again in 60 seconds
+        #     _, _, scheduled_at = calculate_countdown_working_hours(
+        #                 delta=initial_delta, 
+        #                 with_jitter=True)
+        #      # Update the database with response
+        #     update_query = """
+        #                 UPDATE portability_requests 
+        #                 SET response_status = %s, description = %s, status_nc = %s, scheduled_at = %s, updated_at = NOW() 
+        #                 WHERE id = %s
+        #                 """
+        #     cursor.execute(update_query, (response_code, description, status_nc, scheduled_at, mnp_request_id))
+        #     connection.commit()
 
     except requests.exceptions.RequestException as exc:
         current_retry = self.request.retries
@@ -168,7 +218,7 @@ def submit_to_central_node(self, mnp_request_id):
         
             update_query = """
             UPDATE portability_requests 
-            SET status_nc = %s, retry_number = %s, error_description = %s, updated_at = NOW() 
+            SET status_nc = %s, retry_count = %s, error_description = %s, updated_at = NOW() 
             WHERE id = %s
         """
             cursor.execute(update_query, (status_nc, current_retry + 1, error_description, mnp_request_id))
@@ -181,11 +231,12 @@ def submit_to_central_node(self, mnp_request_id):
         else:
             # Max retries exceeded - final failure
             print(f"Max retries exceeded for request {mnp_request_id}: {exc}")
+            logger.error("Max retries exceeded for request %s : %s",mnp_request_id, exc)
             status_nc = "MAX_RETRIES_EXCEEDED"
         
             update_query = """
                 UPDATE portability_requests 
-                SET status_nc = %s, retry_number = %s, error_description = %s, updated_at = NOW() 
+                SET status_nc = %s, retry_count = %s, error_description = %s, updated_at = NOW() 
                 WHERE id = %s
             """
             cursor.execute(update_query, (status_nc, current_retry + 1, error_description, mnp_request_id))
@@ -1183,11 +1234,20 @@ def check_status_port_out_1(self):
 
 from services.soap_services import parse_portout_response
 from services.database_service import insert_portout_response_to_db, check_if_port_out_request_in_db
+from services.time_services import is_working_hours_now
 @app.task(bind=True, max_retries=3)
 def check_status_port_out(self):
     """
     Task to check the status of port-out requests at the Central Node.
     """
+    if settings.IGNORE_WORKING_HOURS:
+        # Process regardless of working hours
+        pass
+    else:
+        if not is_working_hours_now():
+            logger.debug("Outside working hours, no port-out requests will be processed now.")
+            return []
+
     session_code = initiate_session()
 
     if not session_code:

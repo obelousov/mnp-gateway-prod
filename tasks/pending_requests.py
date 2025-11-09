@@ -60,7 +60,7 @@ def process_pending_requests():
                 check_single_request.delay(request['id'], request['status_nc'], 
                                            request['session_code'], request['msisdn'], 
                                            request['response_status'], request.get('status_bss'), 
-                                           request.get('reference_code'), request.get('request_type'))
+                                           request.get('reference_code'), request.get('request_type'), request.get('response_code'))
                 processed_count += 1
                 
             except (mysql.connector.Error, requests.exceptions.RequestException) as e:
@@ -79,9 +79,9 @@ def process_pending_requests():
 
 from tasks.tasks import check_status_port_out
 @app.task
-def check_single_request(request_id, status_nc, session_code, msisdn, response_status, status_bss,reference_code, request_type):
+def check_single_request(request_id, status_nc, session_code, msisdn, response_status, status_bss,reference_code, request_type, response_code):
     """Check a single MNP request and schedule next check if needed"""
-    logger.debug("ENTER check_single_request() with req_id: %s, status_nc %s, status_bss %s, msisdn %s, reference_code %s", request_id, status_nc, status_bss, msisdn, reference_code)
+    logger.debug("ENTER check_single_request() with req_id: %s, status_nc %s, status_bss %s, msisdn %s, reference_code %s response_code %s", request_id, status_nc, status_bss, msisdn, reference_code, response_code)
     # logger.debug("Func: check single request -- %s reference_code %s", request_id, reference_code)
     try:
         a, _, _ = calculate_countdown_working_hours(
@@ -89,14 +89,16 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
             with_jitter=True)
         a_seconds = int(a.total_seconds())
 
-        if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION",""]:
+        if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION"] or 'ACCS PERME' in response_code:
             if request_type == "CANCELLATION" and response_status not in ['ACAN',"400","404"]:
                 submit_to_central_node_cancel.apply_async(
                     args=[request_id],
                     countdown=a_seconds
                 )
             else:
-                if response_status not in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN']:
+                # if response_status not in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN'] and response_code.startswith('ACCS PERME'):
+                if response_status not in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN'] and 'ACCS PERME' in response_code:
+                    logger.debug("ENTER submit_to_central_node with countdown: %s", str(a_seconds))
                     submit_to_central_node.apply_async(
                         args=[request_id],
                         countdown=a_seconds
@@ -108,7 +110,8 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
                 countdown=a_seconds
             )
 
-        if status_nc in ["REQUEST_RESPONDED","PORT_IN_COMPLETED","PORT_IN_REJECTED","PORT_IN_CANCELLED"] and status_bss in ["PROCESSING"]:
+        if status_nc in ["REQUEST_RESPONDED","PORT_IN_COMPLETED","PORT_IN_REJECTED","PORT_IN_CANCELLED",'RE_SUBMITTED'] and status_bss in ["PROCESSING"]:
+            # RE_SUBMITTED happen when NC responds success for porti in in status ACCS PERME
             callback_bss.apply_async(
                 args=[request_id, session_code, msisdn, response_status], 
                 countdown=a_seconds
@@ -135,24 +138,44 @@ def get_due_requests():
         pass
     else:
         if not is_working_hours_now():
-            # logger.debug("Outside working hours, no requests will be processed now.")
+            logger.debug("Outside working hours, no requests will be processed now.")
             return []
         
     logger.debug("ENTER get_due_requests()")
         # OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_OUT%')
+    # query = """
+    # SELECT id, status_nc, session_code, msisdn, response_status, status_bss, reference_code, request_type
+    # FROM portability_requests 
+    # WHERE (
+    #     (status_nc LIKE '%PENDING%' OR status_nc LIKE '%REQUEST_FAILED%')
+    #     OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%REQUEST_RESPONDED%')
+    #     OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_IN%')
+    #     OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%SUBMITTED%')
+    #     OR (response_code LIKE '%ACCS PERME%')
+    # )
+    # AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+    # AND UPPER(request_type) IN ('CANCELLATION', 'PORT_IN','PORT_OUT')
+    # AND country_code = 'ESP'
+    # """
     query = """
-    SELECT id, status_nc, session_code, msisdn, response_status, status_bss, reference_code, request_type
-    FROM portability_requests 
-    WHERE (
-        (status_nc LIKE '%PENDING%' OR status_nc LIKE '%REQUEST_FAILED%')
-        OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%REQUEST_RESPONDED%')
-        OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_IN%')
-        OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%SUBMITTED%')
-    )
+    SELECT 
+        id, 
+        status_nc, 
+        session_code, 
+        msisdn, 
+        response_status, 
+        status_bss, 
+        reference_code, 
+        request_type, response_code
+    FROM portability_requests
+    WHERE country_code = 'ESP'
     AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-    AND UPPER(request_type) IN ('CANCELLATION', 'PORT_IN','PORT_OUT')
-    AND country_code = 'ESP'
-    """
+    AND request_type IN ('CANCELLATION', 'PORT_IN', 'PORT_OUT')
+    AND (
+            status_nc IN ('PENDING', 'REQUEST_FAILED') 
+            OR (status_bss = 'PROCESSING' AND status_nc IN ('REQUEST_RESPONDED', 'PORT_IN', 'SUBMITTED'))
+            OR response_code LIKE '%ACCS PERME%'
+        );"""
 
     connection = None
     try:
