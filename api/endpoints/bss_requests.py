@@ -422,6 +422,7 @@ class PortInResponse(BaseModel):
     response_code: Optional[str] = Field(None, examples=["0000 00000", "ACCS PERME"])
     description: Optional[str] = Field(None, examples=["Operation successful", "No es posible invocar esta operación en horario inhábil"])
     reference_code: Optional[str] = Field(None, examples=["REF_12345"])
+    porting_window_date: Optional[str] = Field(None, examples=["2025-11-12T02:00:00+01:00"], description="Scheduled porting date and time")
 
 @router.post(
     '/port-in', 
@@ -489,16 +490,27 @@ async def portin_request(alta_data: PortInRequest):
         logger.info("Port-in request saved with ID: %s", new_request_id)
         # 3. Launch the background task, passing the ID of the new record
         # submit_to_central_node.delay(new_request_id) # Asynchronous version
-        success, response_code, description, reference_code = submit_to_central_node_online(new_request_id)  # Synchronous version for testing
+        success, response_code, description, reference_code, porting_window_date = submit_to_central_node_online(new_request_id)  # Synchronous version for testing
+
+    #     response_data = {
+    #     "id": new_request_id,
+    #     "success": success,
+    #     "response_code": response_code,
+    #     "description": description,
+    #     "reference_code": reference_code
+    # }
 
         response_data = {
-        "id": new_request_id,
-        "success": success,
-        "response_code": response_code,
-        "description": description,
-        "reference_code": reference_code
-    }
+            "id": new_request_id,
+            "success": success,
+            "reference_code":reference_code,
+            "response_code": response_code,
+            "description": description or f"Status update for MNP request {new_request_id}",
+            # "error_fields": error_fields or [],
+            "porting_window_date": porting_window_date or ""
+        }
 
+        logger.info("Port-in response: %s", response_data)
         # Determine appropriate status code based on success and response_code
         if success:
             return response_data  # FastAPI will use 200 by default, or you can set 202

@@ -62,7 +62,7 @@ def initiate_session():
         raise
 
 # def submit_to_central_node_online(mnp_request_id):
-def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
+def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], Optional[str], Optional[str], Optional[str]]:
     """
     Task to submit a porting request to the Central Node.
     This function runs synchronously.
@@ -92,7 +92,7 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         
         if not mnp_request:
             logger.error("Submit to NC: request %s not found", mnp_request_id)
-            return False, "NOT_FOUND", f"Request {mnp_request_id} not found", None
+            return False, "NOT_FOUND", f"Request {mnp_request_id} not found", None, None
 
         session_code = initiate_session()
         print(f"Submit to NC: Processing request - Status: {mnp_request.get('status_nc')}, Response: {mnp_request.get('response_status')}")
@@ -121,21 +121,29 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         log_payload('NC', 'PORT_IN', 'RESPONSE', str(response.text))
         logger.debug("PORT_IN_RESPONSE<-NC:\n%s", str(response.text))
         
-        result = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+        # result = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+        # response_code, description, reference_code,porting_window_date = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia","fechaVentanaCambio"])
         # result = parse_soap_response_dict(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
-        logger.debug("Parsed SOAP response: %s", str(result))
-        if result and len(result) == 3:
-            response_code, description, reference_code = result
+        # Get the result first without unpacking
+        result = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia", "fechaVentanaCambio"])
+
+        # Conditional payload logging - only once
+        log_payload('NC', 'PORT_IN', 'RESPONSE', str(response.text))
+        logger.debug("PORT_IN_RESPONSE<-NC:\n%s", str(response.text))
+
+        if result and len(result) == 4:
+            response_code, description, reference_code, porting_window_date = result
+            logger.info("Successfully parsed SOAP response for request %s: %s, %s, %s, %s", 
+                        mnp_request_id, response_code, description, reference_code, porting_window_date)
         else:
             # Handle the case where parsing failed
-            response_code, description, reference_code = None, None, None
+            response_code, description, reference_code, porting_window_date = None, None, None, None
             if result:
-                logger.warning("Failed to parse SOAP response properly for request %s. Expected 3 values, got %s", 
+                logger.error("Failed to parse SOAP response properly for request %s. Expected 4 values, got %s", 
                             mnp_request_id, len(result))
             else:
-                logger.warning("Failed to parse SOAP response properly for request %s. Result is None", mnp_request_id)
-
-        # Determine success based on response code
+                logger.error("Failed to parse SOAP response properly for request %s. Result is None", mnp_request_id)
+                # Determine success based on response code
         if response_code == "0000 00000":  # Adjust this condition based on your actual success codes
             status_nc = 'SUBMITTED'
             status_bss = 'PROCESSING'
@@ -156,7 +164,7 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         cursor.execute(update_query, (status_nc,session_code, status_bss, response_code, description, reference_code,mnp_request_id))
         connection.commit()
 
-        return success, response_code, description, reference_code
+        return success, response_code, description, reference_code,porting_window_date
 
     except requests.exceptions.RequestException as e:
         logger.error("HTTP error submitting to Central Node: %s", e)  # Remove curly braces

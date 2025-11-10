@@ -110,12 +110,13 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
                 countdown=a_seconds
             )
 
-        if status_nc in ["REQUEST_RESPONDED","PORT_IN_COMPLETED","PORT_IN_REJECTED","PORT_IN_CANCELLED",'RE_SUBMITTED'] and status_bss in ["PROCESSING"]:
+        # if status_nc in ["REQUEST_RESPONDED","PORT_IN_COMPLETED","PORT_IN_REJECTED","PORT_IN_CANCELLED",'RE_SUBMITTED'] and status_bss in ["PROCESSING"]:
+        # callback_bss - called in each specifci function now
             # RE_SUBMITTED happen when NC responds success for porti in in status ACCS PERME
-            callback_bss.apply_async(
-                args=[request_id, session_code, msisdn, response_status], 
-                countdown=a_seconds
-            )
+            # callback_bss.apply_async(
+            #     args=[request_id, session_code, msisdn, response_status], 
+            #     countdown=a_seconds
+            # )
 
         # if request_type in ["PORT_OUT"]:
         #     check_status_port_out.apply_async()
@@ -172,7 +173,7 @@ def get_due_requests():
     AND (scheduled_at IS NULL OR scheduled_at <= NOW())
     AND request_type IN ('CANCELLATION', 'PORT_IN', 'PORT_OUT')
     AND (
-            status_nc IN ('PENDING', 'REQUEST_FAILED') 
+            status_nc IN ('PENDING', 'REQUEST_FAILED','PENDING_RESPONSE') 
             OR (status_bss = 'PROCESSING' AND status_nc IN ('REQUEST_RESPONDED', 'PORT_IN', 'SUBMITTED'))
             OR response_code LIKE '%ACCS PERME%'
         );"""
