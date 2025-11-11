@@ -234,11 +234,11 @@ class PortInRequest(BaseModel):
         
         return v
 
-    session_code: str = Field(
-        ...,
-        description="Unique session identifier | WSDL: `<v1:codigoSesion>`",
-        examples=["13", "ABC123"]
-    )
+    # session_code: str = Field(
+    #     ...,
+    #     description="Unique session identifier | WSDL: `<v1:codigoSesion>`",
+    #     examples=["13", "ABC123"]
+    # )
     requested_at: date = Field(
         ...,
         description="Request date | WSDL: `<por:fechaSolicitudPorAbonado>`",
@@ -513,34 +513,57 @@ async def portin_request(alta_data: PortInRequest):
         logger.info("Port-in response: %s", response_data)
         # Determine appropriate status code based on success and response_code
         if success:
-            return response_data  # FastAPI will use 200 by default, or you can set 202
+            return response_data  # 200 OK for successful operations
         else:
-            # Map different error types to appropriate HTTP status codes
-            if response_code in ["NOT_FOUND", "VALIDATION_ERROR"]:
+            # Business logic errors return 200 OK with error details
+            if response_code == "ACCS PERME" or re.match(r"^AREC", (response_code or "")):
+                return response_data  # 200 OK with business error details
+    
+            # Technical errors that should raise proper HTTP exceptions
+            elif response_code in ["NOT_FOUND", "VALIDATION_ERROR"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=response_data
-                )
+            )
             elif response_code == "HTTP_ERROR":
                 raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,  # or 504 Gateway Timeout
-                    detail=response_data
-                )
-            elif response_code == "ACCS PERME":  # Outside business hours
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=response_data
-                )
-            elif re.match(r"^AREC", (response_code or "")):  # All AREC errors
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=response_data
-                )
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=response_data
+            )
             else:
                 raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=response_data
-                )
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=response_data
+            )
+        # if success:
+        #     return response_data  # FastAPI will use 200 by default, or you can set 202
+        # else:
+        #     # Map different error types to appropriate HTTP status codes
+        #     if response_code in ["NOT_FOUND", "VALIDATION_ERROR"]:
+        #         raise HTTPException(
+        #             status_code=status.HTTP_400_BAD_REQUEST,
+        #             detail=response_data
+        #         )
+        #     elif response_code == "HTTP_ERROR":
+        #         raise HTTPException(
+        #             status_code=status.HTTP_502_BAD_GATEWAY,  # or 504 Gateway Timeout
+        #             detail=response_data
+        #         )
+        #     elif response_code == "ACCS PERME":  # Outside business hours
+        #         raise HTTPException(
+        #             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        #             detail=response_data
+        #         )
+        #     elif re.match(r"^AREC", (response_code or "")):  # All AREC errors
+        #         raise HTTPException(
+        #             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        #             detail=response_data
+        #         )
+        #     else:
+        #         raise HTTPException(
+        #             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        #             detail=response_data
+        #         )
 
         # # 4. Tell the BSS "We got it, processing now."
         # return {
@@ -614,11 +637,11 @@ class CancelPortabilityRequest(BaseModel):
         description="Indicates if cancellation is initiated by donor operator | WSDL: `<por:cancelacionIniciadaPorDonante>`",
         examples=[True, False]
     )
-    session_code: Optional[str] = Field(
-        None,
-        description="Session identifier for tracking | WSDL: `<v1:codigoSesion>`",
-        examples=["SESSION_001", "13"]
-    )
+    # session_code: Optional[str] = Field(
+    #     None,
+    #     description="Session identifier for tracking | WSDL: `<v1:codigoSesion>`",
+    #     examples=["SESSION_001", "13"]
+    # )
 
 class CancelPortabilityResponse(BaseModel):
     message: str = Field(..., examples=["Cancellation request accepted and queued for processing"])

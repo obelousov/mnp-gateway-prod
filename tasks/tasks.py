@@ -298,8 +298,8 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
         
         consultar_payload = create_status_check_soap_nc(mnp_request_id, session_code, msisdn)  # Check status request SOAP
         # Conditional payload logging
-        log_payload('NC', 'CHECK_STATUS', 'REQUEST', str(consultar_payload))
-        logger.debug("STATUS_CHECK_REQUEST->NC:\n%s", str(consultar_payload))
+        # log_payload('NC', 'CHECK_STATUS', 'REQUEST', str(consultar_payload))
+        # logger.debug("STATUS_CHECK_REQUEST->NC:\n%s", str(consultar_payload))
 
         # if not WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS:
         #     raise ValueError("WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS environment variable is not set.")
@@ -379,11 +379,15 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
         update_query, estado_old, estado, status_nc, mnp_request_id, porting_window_db)
         cursor.execute(update_query, (estado,response_code, description, reference_code, scheduled_datetime, porting_window_db, mnp_request_id))
         connection.commit()
+        
         status_changed = (estado != estado_old)    # callback_bss.delay(mnp_request_id)
-
-        logger.debug("check_status: ref: %s estado %s, estado_old %s status_chnaged %s ",reference_code, estado, estado_old, status_changed)
-
+        # logger.debug("check_status: ref: %s estado %s, estado_old %s status_chnaged %s ",reference_code, estado, estado_old, status_changed)
         if status_changed:
+            logger.debug("check_status: ref: %s estado %s, estado_old %s status_chnaged %s ",reference_code, estado, estado_old, status_changed)
+
+            log_payload('NC', 'CHECK_STATUS', 'REQUEST', str(consultar_payload))
+            logger.debug("STATUS_CHECK_REQUEST->NC:\n%s", str(consultar_payload))
+
             log_payload('NC', 'CHECK_STATUS', 'RESPONSE', str(response.text))
             logger.debug("STATUS_CHECK_RESPONSE<-NC:\n%s", str(response.text))
             logger.debug("estado %s, estado_old %s status_chnaged %s ",estado, estado_old, status_changed)
@@ -542,7 +546,11 @@ def callback_bss(self, mnp_request_id, reference_code, session_code, response_st
                 
                 # Map response_code to appropriate status_bss value
                 # status_bss="CANCEL_REQUEST_COMPLETED" if response_status=="ACAN" else "NO_RESPONSE_ON CANCEL_RESPONSE"
-                status_bss = "STATUS_UPDATED_TO_" + response_status.upper()
+                if response_status == "":
+                    status_bss = "STATUS_UPDATED_TO_" + response_code.upper()
+                else:
+                    status_bss = "STATUS_UPDATED_TO_" + response_status.upper()    
+                # status_bss = f"STATUS_UPDATED_TO_{response_code}"
                 # status_bss = self._map_response_to_status(response_status)
                 cursor.execute(update_query, (status_bss, mnp_request_id))
                 connection.commit()
@@ -1330,3 +1338,171 @@ def check_status_port_out(self):
             if cursor:
                 cursor.close()
             connection.close()
+
+@app.task(bind=True, max_retries=3)
+def submit_to_central_node_cancel_new(self, mnp_request_id):
+    """
+    Celery Task: Submit a cancellation request to the Central Node (NC).
+
+    Steps:
+    1. Fetch portability request from DB (if scheduled time has passed)
+    2. Validate status to ensure it needs to be sent
+    3. Generate SOAP payload for cancellation
+    4. Send request to WSDL endpoint
+    5. Parse and handle SOAP response
+    6. Update DB with new status and trigger BSS callback if required
+    """
+
+    logger.info("Starting cancellation submission for request_id=%s", mnp_request_id)
+    connection, cursor = None, None
+
+    try:
+        # 1️.Database connection setup
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        # 2️.Fetch request only if scheduled_at has passed
+        current_time = datetime.now(container_tz)
+        cursor.execute(
+            "SELECT * FROM portability_requests WHERE id = %s AND %s > scheduled_at",
+            (mnp_request_id, current_time)
+        )
+        mnp_request = cursor.fetchone()
+
+        if not mnp_request:
+            logger.warning("Request %s not found or not yet scheduled", mnp_request_id)
+            return f"Cancel submit: request {mnp_request_id} not found or not yet scheduled"
+
+        status_nc_old = mnp_request.get("status_nc", "NOT_FOUND")
+        response_status = mnp_request.get("response_status")
+        response_code_old = mnp_request.get("response_code", "NOT_FOUND")
+        reference_code = mnp_request.get("reference_code")
+        msisdn = mnp_request.get("msisdn")
+
+        # 3️.Skip if already processed / terminal status
+        if response_status in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN'] or mnp_request.get('response_code') == 'AREC EXIST':
+            logger.info("Request %s ref %s already in terminal state (%s)", mnp_request_id, reference_code, response_status)
+            return f"Request {reference_code} is in status: {response_status} and response_code: {response_code_old}, no further submission needed"
+
+        # 4️.Prepare SOAP payload
+        soap_payload = json_from_db_to_soap_cancel(mnp_request)
+#        log_payload('NC', 'CANCEL', 'REQUEST', str(soap_payload))
+#        logger.debug("SOAP CANCEL request payload generated for %s", mnp_request_id)
+
+        # 5️.Send request to Central Node
+        if not WSDL_SERVICE_SPAIN_MOCK_CANCEL:
+            raise ValueError("WSDL_SERVICE_SPAIN_MOCK_CANCEL is not set in environment")
+
+        current_retry = self.request.retries
+        logger.info("Submitting cancel to NC (attempt %d) for request %s", current_retry + 1, mnp_request_id)
+
+        response = requests.post(
+            WSDL_SERVICE_SPAIN_MOCK_CANCEL,
+            data=soap_payload,
+            headers=settings.get_soap_headers('IniciarSesion'),
+            timeout=settings.APIGEE_API_QUERY_TIMEOUT
+        )
+        response.raise_for_status()
+
+        # 6️.Parse SOAP response
+        response_code, description = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion"])
+        log_payload('NC', 'CANCEL', 'RESPONSE', str(response.text))
+        logger.debug("SOAP CANCEL response received for %s: %s - %s", mnp_request_id, response_code, description)
+
+        # 7️.Interpret response code -> internal status
+        response_code_upper = (response_code or "").strip().upper()
+        if not response_code_upper:
+            status_nc = "PENDING_NO_RESPONSE_CODE_RECEIVED"
+        elif response_code_upper.startswith("4"):
+            status_nc = "REQUEST_FAILED"
+        elif response_code_upper.startswith("5"):
+            status_nc = "SERVER_ERROR"
+        elif response_code_upper == "ASOL":
+            status_nc = "PENDING_RESPONSE"
+        elif response_code_upper == "ACAN":
+            status_nc = "CANCEL_CONFIRMED"
+        elif response_code == "0000 0000":
+            status_nc = "CANCEL_CONFIRMED"
+        else:
+            status_nc = "PENDING_CONFIRMATION"
+
+        # 8️.Update DB if response_code status changed
+        if response_code != response_code_old:
+            logger.info("Status change for %s: %s → %s : %s", mnp_request_id, response_code_old, response_code, response_code_upper)
+            
+            log_payload('NC', 'CANCEL', 'REQUEST', str(soap_payload))
+            logger.debug("SOAP CANCEL request payload generated for %s", mnp_request_id)
+            status_bss = "STATUS_UPDATED_TO_" + (response_code or "")
+            logger.debug("status_bss value: %s", status_bss)
+
+            # Update immediately (for confirmed/failure cases)
+            update_query = """
+                    UPDATE portability_requests
+                    SET status_nc = %s, response_code = %s,
+                        description = %s, status_bss = %s, updated_at = NOW()
+                    WHERE id = %s
+                """
+            cursor.execute(update_query, (status_nc, response_code, description, status_bss, mnp_request_id))
+            connection.commit()
+
+                # Notify BSS asynchronously
+                #callback_bss.delay(mnp_request_id, reference_code, None, response_code, description, None, None)
+            session_code_bss = ""
+            callback_bss.delay(
+                mnp_request_id,
+                reference_code,
+                session_code_bss,
+                response_status,
+                msisdn,
+                response_code,
+                description,
+                porting_window_date=None,
+                error_fields=None
+                    )
+
+        else:
+            logger.info("No status change for %s — scheduling next check", mnp_request_id)
+            initial_delta = timedelta(seconds=PENDING_REQUESTS_TIMEOUT)
+            _, _, scheduled_at = calculate_countdown_working_hours(delta=initial_delta, with_jitter=True)
+            update_query = """
+                UPDATE portability_requests
+                SET response_status = %s, description = %s, status_nc = %s,
+                    scheduled_at = %s, updated_at = NOW()
+                WHERE id = %s
+            """
+            cursor.execute(update_query, (response_code, description, status_nc, scheduled_at, mnp_request_id))
+            connection.commit()
+
+    except requests.exceptions.RequestException as exc:
+        current_retry = self.request.retries
+        error_description = str(exc)
+        status_nc = "REQUEST_FAILED" if current_retry < self.max_retries else "MAX_RETRIES_EXCEEDED"
+
+        try:
+            # Update DB status
+            connection = get_db_connection()
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute("""
+                UPDATE portability_requests
+                SET status_nc = %s,
+                    retry_count = %s,
+                    error_description = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+            """, (status_nc, current_retry + 1, error_description, mnp_request_id))
+            connection.commit()
+        except Exception as db_err:
+            logger.error("DB update failed for request %s: %s", mnp_request_id, db_err)
+        finally:
+            if 'cursor' in locals() and cursor:
+                cursor.close()
+            if 'connection' in locals() and connection and connection.is_connected():
+                connection.close()
+
+        # Handle retry logic (only once)
+        if current_retry < self.max_retries:
+            logger.warning("Request failed, retrying (%d/%d): %s", current_retry + 1, self.max_retries, exc)
+            raise self.retry(exc=exc, countdown=60)
+        else:
+            logger.critical("Max retries exceeded for request %s: %s", mnp_request_id, exc)
+            raise exc

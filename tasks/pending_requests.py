@@ -13,7 +13,7 @@ import pytz
 # from db_utils import get_db_connection
 from services.database_service import get_db_connection
 # from config import logger
-from tasks.tasks import submit_to_central_node, check_status, callback_bss, submit_to_central_node_cancel
+from tasks.tasks import submit_to_central_node, check_status, callback_bss, submit_to_central_node_cancel, submit_to_central_node_cancel_new
 # from services.logger import logger
 from services.logger_simple import log_payload, logger
 from config import settings
@@ -91,7 +91,12 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
 
         if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION"] or 'ACCS PERME' in response_code:
             if request_type == "CANCELLATION" and response_status not in ['ACAN',"400","404"]:
-                submit_to_central_node_cancel.apply_async(
+                # submit_to_central_node_cancel.apply_async(
+                #     args=[request_id],
+                #     countdown=a_seconds
+                # )
+                a_seconds = 0  # for cancellation we want to process asap
+                submit_to_central_node_cancel_new.apply_async(
                     args=[request_id],
                     countdown=a_seconds
                 )
