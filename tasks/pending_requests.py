@@ -41,8 +41,12 @@ def process_pending_requests():
         # Get requests that are due for checking
         due_requests = get_due_requests()
         
+        if isinstance(due_requests, str):
+            # logger.info(due_requests)
+            return due_requests  # That printed by Flower
+        
         if not due_requests:
-            message = "No due requests found"
+            message = "No due requests found" # That printed by Flower
             # logging.info(message)
             # logger.debug(message)
             return message
@@ -90,7 +94,8 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
         a_seconds = int(a.total_seconds())
 
         if status_nc in ["PENDING_NO_RESPONSE_CODE_RECEIVED", "PENDING_SUBMIT","PENDING_CONFIRMATION"] or 'ACCS PERME' in response_code:
-            if request_type == "CANCELLATION" and response_status not in ['ACAN',"400","404"]:
+            # if request_type == "CANCELLATION" and response_status not in ['ACAN',"400","404"]:
+            if request_type == "CANCELLATION" and response_code == "ACCS PERME":
                 # submit_to_central_node_cancel.apply_async(
                 #     args=[request_id],
                 #     countdown=a_seconds
@@ -103,6 +108,7 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
             else:
                 # if response_status not in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN'] and response_code.startswith('ACCS PERME'):
                 if response_status not in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN'] and 'ACCS PERME' in response_code:
+                    a_seconds = 0  # for port-in we want to process asap
                     logger.debug("ENTER submit_to_central_node with countdown: %s", str(a_seconds))
                     submit_to_central_node.apply_async(
                         args=[request_id],
@@ -144,8 +150,10 @@ def get_due_requests():
         pass
     else:
         if not is_working_hours_now():
-            logger.debug("Outside working hours, no requests will be processed now.")
-            return []
+            msg = "Outside working hours, no requests will be processed now."
+            # logger.debug("Outside working hours, no requests will be processed now.")
+            # return []
+            return msg
         
     logger.debug("ENTER get_due_requests()")
         # OR (status_bss LIKE '%PROCESSING%' AND status_nc LIKE '%PORT_OUT%')

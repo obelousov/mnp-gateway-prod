@@ -519,7 +519,7 @@ async def portin_request(alta_data: PortInRequest):
             if response_code == "ACCS PERME" or re.match(r"^AREC", (response_code or "")):
                 return response_data  # 200 OK with business error details
     
-            # Technical errors that should raise proper HTTP exceptions
+        # Technical errors that should raise proper HTTP exceptions
             elif response_code in ["NOT_FOUND", "VALIDATION_ERROR"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -1554,6 +1554,7 @@ class PortInRequestLegal(PortInRequest):
             raise ValueError('This endpoint only supports legal entities (subscriber_type must be "company").')
 
         doc_type = v.identification_document.document_type
+        # if doc_type not in ["CIF", "NIF", "VAT"]:
         if doc_type != "CIF":
             raise ValueError(
                 f'Invalid document_type "{doc_type}" for company subscriber. Legal entities must use "CIF".'
@@ -1741,7 +1742,7 @@ async def portin_request_legal(alta_data: PortInRequestLegal):
         
         # 3. Launch the background task, passing the ID of the new record
         # submit_to_central_node_legal.delay(new_request_id) # Asynchronous version for legal entities
-        success, response_code, description, reference_code = submit_to_central_node_online(new_request_id)  # Synchronous version for legal entities
+        success, response_code, description, reference_code, porting_window_date = submit_to_central_node_online(new_request_id)  # Synchronous version for legal entities
 
         response_data = {
             "id": new_request_id,
@@ -1749,7 +1750,8 @@ async def portin_request_legal(alta_data: PortInRequestLegal):
             "response_code": response_code,
             "description": description,
             "reference_code": reference_code,
-            "entity_type": "LEGAL"
+            "porting_window_date": "" if not porting_window_date else porting_window_date
+            # "entity_type": "LEGAL"
         }
 
         # Determine appropriate status code based on success and response_code

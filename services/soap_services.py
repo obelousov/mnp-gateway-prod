@@ -535,15 +535,15 @@ def parse_soap_response_nested(soap_xml: str, requested_fields: List[str]) -> Tu
     return tuple(result)
 
 
-def json_from_db_to_soap_cancel(json_data):
+def json_from_db_to_soap_cancel(json_data, session_code):
     """
     Convert JSON data from new table structure to SOAP request
     """
-    logger.debug("ENTER json_from_db_to_soap_cancel() %s", json_data)
+    logger.debug("ENTER json_from_db_to_soap_cancel() %s with session code %s", json_data, session_code)
     # print("Received JSON data:", json_data)
      
     return CANCEL_PORT_IN_REQUEST_TEMPLATE.format(
-        session_code=json_data.get('session_code', ''),
+        session_code=session_code,
         reference_code=json_data.get('reference_code'),
         cancellation_reason=json_data.get('cancellation_reason', ''),
         cancellation_initiated_by_donor=json_data.get('cancellation_initiated_by_donor', '')

@@ -21,6 +21,7 @@ from services.time_services import calculate_countdown_working_hours, normalize_
 from services.logger_simple import log_payload, logger
 from porting.spain_nc import initiate_session, callback_bss_online
 import json
+from services.soap_services import json_from_db_to_soap_cancel_online
 
 WSDL_SERVICE_SPAIN_MOCK = settings.WSDL_SERVICE_SPAIN_MOCK
 WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = settings.WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS
@@ -1254,7 +1255,7 @@ def check_status_port_out(self):
         pass
     else:
         if not is_working_hours_now():
-            logger.debug("Outside working hours, no port-out requests will be processed now.")
+            # logger.debug("Outside working hours, no port-out requests will be processed now.")
             return []
 
     session_code = initiate_session()
@@ -1380,12 +1381,16 @@ def submit_to_central_node_cancel_new(self, mnp_request_id):
         msisdn = mnp_request.get("msisdn")
 
         # 3️.Skip if already processed / terminal status
-        if response_status in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN'] or mnp_request.get('response_code') == 'AREC EXIST':
-            logger.info("Request %s ref %s already in terminal state (%s)", mnp_request_id, reference_code, response_status)
-            return f"Request {reference_code} is in status: {response_status} and response_code: {response_code_old}, no further submission needed"
+        # if response_status in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN'] or mnp_request.get('response_code') == 'AREC EXIST':
+        if response_code_old == 'OOOO 0000':
+            logger.info("Cancel request %s ref %s already confirmed by NC (%s)", mnp_request_id, reference_code, response_code_old)
+            return f"Request {reference_code} has response_code from NC: {response_code_old}, no further submission needed"
 
         # 4️.Prepare SOAP payload
-        soap_payload = json_from_db_to_soap_cancel(mnp_request)
+        session_code = initiate_session()
+
+        # soap_payload = json_from_db_to_soap_cancel(mnp_request, session_code)
+        soap_payload = json_from_db_to_soap_cancel_online(mnp_request, session_code)
 #        log_payload('NC', 'CANCEL', 'REQUEST', str(soap_payload))
 #        logger.debug("SOAP CANCEL request payload generated for %s", mnp_request_id)
 
@@ -1399,7 +1404,7 @@ def submit_to_central_node_cancel_new(self, mnp_request_id):
         response = requests.post(
             WSDL_SERVICE_SPAIN_MOCK_CANCEL,
             data=soap_payload,
-            headers=settings.get_soap_headers('IniciarSesion'),
+            headers=settings.get_soap_headers('CancelarSolicitudAltaPortabilidadMovil'),
             timeout=settings.APIGEE_API_QUERY_TIMEOUT
         )
         response.raise_for_status()
