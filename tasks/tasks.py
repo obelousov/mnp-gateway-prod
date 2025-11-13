@@ -1309,6 +1309,9 @@ def check_status_port_out(self):
             logger.debug("STATUS_CHECK_PORT_OUT_RESPONSE<-NC total records %s:\n%s", total_records,str(response.text))
             insert_portout_response_to_db(parsed) # in the insert check if records with such reference_code exist
             callback_bss_portout.delay(parsed)
+        else:
+            logger.info("No new port-out records to process from NC.")
+            return "No port-out records to process"
 
         # _, _, scheduled_datetime = calculate_countdown_working_hours(
         #                                                 delta=settings.TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK, 
