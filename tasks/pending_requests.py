@@ -105,6 +105,7 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
                     args=[request_id],
                     countdown=a_seconds
                 )
+                return "Cancellation request submitted for request ID %s", str(request_id)
             else:
                 # if response_status not in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN'] and response_code.startswith('ACCS PERME'):
                 if response_status not in ['ASOL', 'ACON', 'AREC', 'APOR', 'ACAN'] and 'ACCS PERME' in response_code:
@@ -114,12 +115,15 @@ def check_single_request(request_id, status_nc, session_code, msisdn, response_s
                         args=[request_id],
                         countdown=a_seconds
                 )
+                    return "Port-in request submitted for request ID %s", str(request_id)
 
         if status_nc in ["PENDING_RESPONSE","PORT_IN_CONFIRMED","SUBMITTED"]:
+            a_seconds = 0  # for status check we want to process asap
             check_status.apply_async(
                 args=[request_id,session_code,msisdn, reference_code], 
                 countdown=a_seconds
             )
+            return "Status check scheduled for request ID %s", str(request_id)
 
         # if status_nc in ["REQUEST_RESPONDED","PORT_IN_COMPLETED","PORT_IN_REJECTED","PORT_IN_CANCELLED",'RE_SUBMITTED'] and status_bss in ["PROCESSING"]:
         # callback_bss - called in each specifci function now

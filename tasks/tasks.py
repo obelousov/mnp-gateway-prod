@@ -1256,7 +1256,7 @@ def check_status_port_out(self):
     else:
         if not is_working_hours_now():
             # logger.debug("Outside working hours, no port-out requests will be processed now.")
-            return []
+            return "Outside working hours, no port-out requests will be processed now."
 
     session_code = initiate_session()
 
