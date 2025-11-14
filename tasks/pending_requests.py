@@ -171,6 +171,25 @@ def get_due_requests():
     # AND UPPER(request_type) IN ('CANCELLATION', 'PORT_IN','PORT_OUT')
     # AND country_code = 'ESP'
     # """
+    # query = """
+    # SELECT 
+    #     id, 
+    #     status_nc, 
+    #     session_code, 
+    #     msisdn, 
+    #     response_status, 
+    #     status_bss, 
+    #     reference_code, 
+    #     request_type, response_code
+    # FROM portability_requests
+    # WHERE country_code = 'ESP'
+    # AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+    # AND request_type IN ('CANCELLATION', 'PORT_IN', 'PORT_OUT')
+    # AND (
+    #         status_nc IN ('PENDING', 'REQUEST_FAILED','PENDING_RESPONSE') 
+    #         OR (status_bss = 'PROCESSING' AND status_nc IN ('REQUEST_RESPONDED', 'PORT_IN', 'SUBMITTED'))
+    #         OR response_code LIKE '%ACCS PERME%'
+    #     );"""
     query = """
     SELECT 
         id, 
@@ -189,7 +208,9 @@ def get_due_requests():
             status_nc IN ('PENDING', 'REQUEST_FAILED','PENDING_RESPONSE') 
             OR (status_bss = 'PROCESSING' AND status_nc IN ('REQUEST_RESPONDED', 'PORT_IN', 'SUBMITTED'))
             OR response_code LIKE '%ACCS PERME%'
-        );"""
+            OR (request_type IN ('PORT_IN') AND response_status IN ('ASOL', 'ACON'))
+        );
+    """
 
     connection = None
     try:
