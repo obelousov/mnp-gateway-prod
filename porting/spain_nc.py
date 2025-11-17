@@ -567,16 +567,19 @@ def submit_to_central_node_port_out_reject_new(alta_data: dict) -> Tuple[bool, O
         status_bss = 'RECEIVED_PORT_OUT_REJECT'
         status_nc = f"STATUS_UPDATED_TO_{response_code}"
 
+        confirm_reject = 2
         update_query = """
             UPDATE portout_request 
             SET status_nc = %s,
                 status_bss = %s,
                 response_code = %s,
                 description = %s,
+                confirm_reject = %s,
+                cancellation_reason = %s,
                 updated_at = NOW()
             WHERE reference_code = %s
         """
-        cursor.execute(update_query, (status_nc, status_bss, response_code, description, reference_code))
+        cursor.execute(update_query, (status_nc, status_bss, response_code, description, confirm_reject, cancellation_reason, reference_code))
         connection.commit()
 
         return success, response_code, description
@@ -676,15 +679,19 @@ def submit_to_central_node_port_out_reject(alta_data: dict) -> Tuple[bool, Optio
         # Update database
         status_bss = 'RECEIVED_PORT_OUT_REJECT'
         status_nc = f"STATUS_UPDATED_TO_{response_code}"
+        confrim_reject = 2
         update_query = """
             UPDATE portout_request 
             SET status_nc = %s, status_bss = %s, response_code = %s, 
-                description = %s, updated_at = NOW()
+                description = %s, 
+                confirm_reject = %s,
+                cancellation_reason = %s,
+                updated_at = NOW()
             WHERE reference_code = %s
         """
         # logger.debug("UPDATE portout_request SET status_nc = %s, status_bss = %s, response_code = %s, description = %s WHERE reference_code = %s", 
         #      status_nc, status_bss, response_code, description, reference_code)
-        cursor.execute(update_query, (status_nc, status_bss, response_code, description, reference_code))
+        cursor.execute(update_query, (status_nc, status_bss, response_code, description, confrim_reject, cancellation_reason, reference_code))
         connection.commit()
 
         return success, response_code, description
@@ -776,15 +783,17 @@ def submit_to_central_node_port_out_confirm(alta_data: dict) -> Tuple[bool, Opti
         # Update database
         status_bss = 'RECEIVED_PORT_OUT_CONFIRM'
         status_nc = f"STATUS_UPDATED_TO_{response_code}"
+        confirm_reject = 1
+        cancellation_reason = ""
         update_query = """
             UPDATE portout_request 
             SET status_nc = %s, status_bss = %s, response_code = %s, 
-                description = %s, updated_at = NOW()
+                description = %s, confirm_reject = %s, cancellation_reason = %s, updated_at = NOW()
             WHERE reference_code = %s
         """
         # logger.debug("UPDATE portout_request SET status_nc = %s, status_bss = %s, response_code = %s, description = %s WHERE reference_code = %s", 
         #      status_nc, status_bss, response_code, description, reference_code)
-        cursor.execute(update_query, (status_nc, status_bss, response_code, description, reference_code))
+        cursor.execute(update_query, (status_nc, status_bss, response_code, description, confirm_reject, cancellation_reason, reference_code))
         connection.commit()
 
         return success, response_code, description

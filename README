@@ -30,6 +30,7 @@ http://localhost:8080/dashboard/#/http/routers
 swagger docs
 https://mnp-api.olbe.tech/docs
 https://mnp-api.olbe.tech/redoc
+admin:secret@123
 
 planUML
 http://localhost:9090
