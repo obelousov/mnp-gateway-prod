@@ -139,13 +139,13 @@ class PersonalData(BaseModel):
         description="First name | WSDL: `<por:nombre>`",
         examples=["Jose", "Maria"]
     )
-    first_surname: Optional[str] = Field(
-        None,
+    first_surname: str = Field(
+        ...,
         description="First surname | WSDL: `<por:primerApellido>`",
         examples=["Garcia", "Lopez"]
     )
     second_surname: Optional[str] = Field(
-        None,
+        "",
         description="Second surname | WSDL: `<por:segundoApellido>`",
         examples=["Martinez", "Fernandez"]
     )
@@ -176,7 +176,7 @@ class Subscriber(BaseModel):
     company_data: Optional[CompanyData] = None
 
     @validator('identification_document')
-    def validate_document_matches_subscriber_type(cls, v, values):
+    def validate_document_matches_subscriber_type(cls, v, values): # pylint: disable=no-self-argument
         """Validate that document type matches subscriber type"""
         if 'subscriber_type' not in values:
             return v
@@ -193,7 +193,8 @@ class Subscriber(BaseModel):
         return v
 
     @validator('personal_data')
-    def validate_personal_data(cls, v, values):
+    def validate_personal_data(cls, v, values): # pylint: disable=no-self-argument
+        """Validate that personal_data is provided for person subscribers"""
         if 'subscriber_type' not in values:
             return v
             
@@ -202,7 +203,8 @@ class Subscriber(BaseModel):
         return v
 
     @validator('company_data')
-    def validate_company_data(cls, v, values):
+    def validate_company_data(cls, v, values): # pylint: disable=no-self-argument
+        """Validate that company_data is provided for company subscribers"""
         if 'subscriber_type' not in values:
             return v
             
@@ -291,7 +293,8 @@ class PortInRequest(BaseModel):
         examples=["299-TRAC_12"]
     )
     @validator('contract_number')
-    def validate_contract_number(cls, v, values):
+    def validate_contract_number(cls, v, values): # pylint: disable=no-self-argument
+        """Validate contract_number:"""
         if not v:
             raise ValueError("Contract number is required")
         
@@ -320,7 +323,8 @@ class PortInRequest(BaseModel):
         examples=["906299"]
     )
     @validator('routing_number')
-    def validate_routing_number(cls, v):
+    def validate_routing_number(cls, v): # pylint: disable=no-self-argument
+        """Validate routing_number (NRN)"""
         if not v:
             raise ValueError("Routing number (NRN) is required")
         
@@ -346,7 +350,8 @@ class PortInRequest(BaseModel):
     )
 
     @validator('desired_porting_date')
-    def validate_and_format_datetime(cls, v):
+    def validate_and_format_datetime(cls, v): # pylint: disable=no-self-argument
+        """Validate and format desired_porting_date to 'DD/MM/YYYY HH:MM:SS'"""
         if v is None:
             return None
             
@@ -381,7 +386,8 @@ class PortInRequest(BaseModel):
         max_length=20
     )
     @validator('iccid')
-    def validate_iccid(cls, v):
+    def validate_iccid(cls, v): # pylint: disable=no-self-argument
+        """Validate ICCID:"""
         if not v:
             raise ValueError("ICCID is required")
         
@@ -417,6 +423,7 @@ class PortInRequest(BaseModel):
     )
 
 class PortInResponse(BaseModel):
+    """ Pydantic class to validate Port-In response payload """
     id: int = Field(..., examples=[12345], description="Internal request ID")
     success: bool = Field(..., examples=[True, False])
     response_code: Optional[str] = Field(None, examples=["0000 00000", "ACCS PERME"])
@@ -644,6 +651,7 @@ class CancelPortabilityRequest(BaseModel):
     # )
 
 class CancelPortabilityResponse(BaseModel):
+    """ Model for portability cancellation response """
     message: str = Field(..., examples=["Cancellation request accepted and queued for processing"])
     request_id: int = Field(..., examples=[12345], description="Internal cancellation request ID")
     reference_code: str = Field(..., examples=["PORT_IN_12345"], description="Original reference code")
@@ -1467,6 +1475,7 @@ class PersonalDataLegal(BaseModel):
     
     @validator('company_name')
     def validate_company_name(cls, v): # pylint: disable=no-self-argument
+        """Ensure company name is provided and valid for legal entities"""
         if not v or not v.strip():
             raise ValueError("Company name is required for legal entities")
         if len(v.strip()) < 2:
