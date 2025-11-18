@@ -60,9 +60,9 @@ services:
       - TZ=${TIME_ZONE}
     volumes:
       - db_data:/var/lib/mysql
-    # ports:
+    ports:
     #   # - "3307:3306"
-    #   - "127.0.0.1:3307:3306"  # Only expose on host's localhost
+      - "127.0.0.1:3307:3306"  # Only expose on host's localhost for alembic migrations
     networks:
       - internal-network
     healthcheck:

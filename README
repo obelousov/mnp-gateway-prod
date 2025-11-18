@@ -192,3 +192,21 @@ url to submit queries from app
 https://sms2email.olbe.tech/webhook_receiver
 here can see body of requests sent from mnp-gateway app
 https://sms2email.olbe.tech/webhook_dashboard
+
+alembic-DB migrations commands:
+update alembic.ini file with connection string to mysql instance
+sqlalchemy.url = mysql+pymysql://user:password@host:3307/database
+
+docker compose -f alembic-migrations/compose.yml up -d --build
+docker compose -f alembic-migrations/compose.yml up -d
+docker compose -f alembic-migrations/compose.yml down
+
+initial syncup:
+docker compose -f alembic-migrations/compose.yml exec alembic-app alembic stamp head
+
+Subsequent migrations:
+docker compose -f alembic-migrations/compose.yml exec alembic-app alembic revision --autogenerate -m "initial check"
+docker compose -f alembic-migrations/compose.yml exec alembic-app alembic upgrade head
+
+in case need to rollback last migration:
+docker compose -f alembic-migrations/compose.yml exec alembic-app alembic downgrade -1
