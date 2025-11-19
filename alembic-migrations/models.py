@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, text, ForeignKey, TIMESTAMP, Enum, Text
+from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, text, ForeignKey, TIMESTAMP, Enum, Text, Index, SmallInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -6,6 +6,9 @@ Base = declarative_base()
 
 class PortoutMetadata(Base):
     __tablename__ = 'portout_metadata'
+    __table_args__ = (
+        Index('idx_response_code', 'response_code'),
+    )
     
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     response_code = Column(String(50))
@@ -20,6 +23,11 @@ class PortoutMetadata(Base):
 
 class PortoutRequest(Base):
     __tablename__ = 'portout_request'
+    __table_args__ = (
+        Index('idx_metadata_id', 'metadata_id'),
+        Index('idx_msisdn', 'MSISDN'),
+        Index('idx_reference_code', 'reference_code'),
+    )
     
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     metadata_id = Column(BigInteger, ForeignKey('portout_metadata.id'), nullable=False)
@@ -28,11 +36,11 @@ class PortoutRequest(Base):
     synchronized = Column(Boolean)
     reference_code = Column(String(50))
     status_bss = Column(String(50))
-    submitted_to_bss = Column(Boolean, server_default=text('0'))
+    submitted_to_bss = Column(Boolean, server_default=text('0'), comment='0 - not submitted, 1 - submitted')
     status_nc = Column(String(50))
     status = Column(String(10))
     response_code = Column(String(10))
-    confirm_reject = Column(Integer, comment='confirm=1, reject=2 for offline confirmation to NC')
+    confirm_reject = Column(SmallInteger, comment='confirm=1, reject=2 for offline confirmation to NC')
     cancellation_reason = Column(String(100), comment='eg CANC_ABONA')
     description = Column(String(200), comment='description with return NC on reject or confirm')
     state_date = Column(DateTime)
@@ -48,7 +56,7 @@ class PortoutRequest(Base):
     port_window_date = Column(DateTime)
     port_window_by_subscriber = Column(Boolean)
     MSISDN = Column(String(20))
-    subscriber_type = Column(String(20), server_default=text("'person'"))
+    subscriber_type = Column(String(20), server_default=text("'person'"), comment='person or legal')
     subscriber_id_type = Column(String(10))
     subscriber_id_number = Column(String(30))
     subscriber_first_name = Column(String(100))
@@ -64,10 +72,23 @@ class PortoutRequest(Base):
 
 class PortabilityRequests(Base):
     __tablename__ = 'portability_requests'
+    __table_args__ = (
+        Index('idx_country_type', 'country_code', 'request_type'),
+        Index('idx_status_composite', 'status_nc', 'status_bss', 'scheduled_at'),
+        Index('idx_msisdn', 'msisdn'),
+        Index('idx_reference_code', 'reference_code'),
+        Index('idx_session_code', 'session_code'),
+        Index('idx_donor_recipient', 'donor_operator', 'recipient_operator'),
+        Index('idx_created_at', 'created_at'),
+        Index('idx_scheduled_status', 'scheduled_at', 'status_nc'),
+        Index('idx_completion', 'completed_at', 'country_code'),
+        Index('idx_document', 'document_type', 'document_number'),
+        {'comment': 'Mobile number portability requests (IN/OUT/CANCEL/MULTISIM)'}
+    )
     
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     country_code = Column(String(3), nullable=False, server_default=text("'ESP'"))
-    request_type = Column(Enum('PORT_IN', 'PORT_OUT', 'CANCELLATION', 'MULTISIM', 'EXTENSION'), nullable=False)
+    request_type = Column(Enum('PORT_IN', 'PORT_OUT', 'CANCELLATION', 'MULTISIM', 'EXTENSION', name='request_type_enum'), nullable=False)
     cancel_request_id = Column(BigInteger, nullable=False, server_default=text('0'), comment='id of portin request')
     reference_code = Column(String(100), server_default=text("''"), comment='Unique reference from NC system')
     session_code = Column(String(100), comment='Session identifier from BSS')
@@ -84,13 +105,13 @@ class PortabilityRequests(Base):
     error_description = Column(String(255))
     msisdn = Column(String(15), nullable=False, server_default=text("''"), comment='Phone number')
     iccid = Column(String(22), comment='SIM card number')
-    subscriber_type = Column(Enum('person', 'company'), comment='person/company')
-    document_type = Column(Enum('NIF', 'CIF', 'NIE', 'PAS'), nullable=False)
+    subscriber_type = Column(Enum('person', 'company', name='subscriber_type_enum'), comment='person/company')
+    document_type = Column(Enum('NIF', 'CIF', 'NIE', 'PAS', name='document_type_enum'), nullable=False)
     document_number = Column(String(50), nullable=False, server_default=text("''"))
     first_name = Column(String(100))
     first_surname = Column(String(100))
     second_surname = Column(String(100))
-    nationality = Column(String(64), server_default=text("'ESPANA'"))
+    nationality = Column(String(64), server_default=text("'España'"))
     name_surname = Column(String(200), nullable=False, server_default=text("''"))
     contract_number = Column(String(100), comment='Subscriber contract number')
     donor_operator = Column(String(50), nullable=False, server_default=text("''"), comment='Current operator')

@@ -22,6 +22,13 @@ if config.config_file_name is not None:
 # Set target_metadata for autogenerate support
 target_metadata = Base.metadata
 
+def include_object(object, name, type_, reflected, compare_to):
+    # Don't generate operations for these tables
+    excluded_tables = {'nc_response_codes', 'cancellation_requests', 'portability_audit_log', 'portability_requests_v0','portout_metadata','portout_request'}
+    if type_ == "table" and name in excluded_tables:
+        return False
+    return True
+
 def get_database_url():
     """Get database URL from environment variables with fallback"""
     user = os.getenv('DB_USER')
