@@ -7,7 +7,7 @@ from config import settings
 from services.logger_simple import logger
 import secrets
 from api.v2.endpoints import health as health_v2
-from api.v1 import bss, metrics, orders
+from api.v1 import bss, metrics, orders, return_request
 from api.core.middleware import prometheus_middleware
 import logging
 from fastapi.logger import logger as fastapi_logger
@@ -141,6 +141,13 @@ app.middleware("http")(prometheus_middleware)
 app.include_router(
     metrics.router,
     prefix=settings.API_PREFIX  # This will make endpoints: /api/v1/metrics, /api/v1/health
+)
+
+# include retrun request router
+app.include_router(
+    return_request.router,
+    prefix=settings.API_PREFIX,      # Refer as settings.API_V1_PREFIX
+    # tags=["BSS Webhook"]
 )
 
 

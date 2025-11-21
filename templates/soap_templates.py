@@ -197,3 +197,29 @@ CONFIRM_PORT_OUT_REQUEST  = """
    </soapenv:Body>
 </soapenv:Envelope>
 """
+
+RETURN_REQUEST_TEMPLATE ="""
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <por:peticionCrearSolicitudBajaNumeracionMovil>
+         <v1:codigoSesion>{session_code}</v1:codigoSesion>
+         <por:fechaBajaAbonado>{request_date}</por:fechaBajaAbonado>
+         <por:MSISDN>{msisdn}</por:MSISDN>
+      </por:peticionCrearSolicitudBajaNumeracionMovil>
+   </soapenv:Body>
+</soapenv:Envelope>
+"""
+
+CANCEL_RETURN_TEMPLATE ="""
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <por:peticionCancelarSolicitudBajaNumeracionMovil>
+         <v1:codigoSesion>{session_code}</v1:codigoSesion>
+         <por:codigoReferencia>{reference_code}</por:codigoReferencia>
+         <por:causaEstado>{cancellation_reason}</por:causaEstado>
+      </por:peticionCancelarSolicitudBajaNumeracionMovil>
+   </soapenv:Body>
+</soapenv:Envelope>
+"""

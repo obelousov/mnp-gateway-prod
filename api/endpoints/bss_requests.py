@@ -351,18 +351,19 @@ class PortInRequest(BaseModel):
 
     @validator('desired_porting_date')
     def validate_and_format_datetime(cls, v): # pylint: disable=no-self-argument
-        """Validate and format desired_porting_date to 'DD/MM/YYYY HH:MM:SS'"""
+        """Validate and format desired_porting_date to 'YYYY-MM-DDT02:00:00'"""
         if v is None:
             return None
             
         if isinstance(v, datetime):
-            # Convert datetime object to required string format
-            return v.strftime('%d/%m/%Y %H:%M:%S')
+            # Convert datetime object to required string format with fixed time
+            return v.strftime('%Y-%m-%d') + 'T02:00:00'
         elif isinstance(v, str):
             # Try to parse various formats and convert to required format
             formats_to_try = [
-                '%d/%m/%Y %H:%M:%S',  # Exact required format
-                '%Y-%m-%d %H:%M:%S',  # ISO with time
+                '%Y-%m-%dT%H:%M:%S',  # Exact required format
+                '%d/%m/%Y %H:%M:%S',  # DD/MM/YYYY with time
+                '%Y-%m-%d %H:%M:%S',  # ISO with space
                 '%d/%m/%Y',           # Date only with slashes
                 '%Y-%m-%d',           # ISO date only
             ]
@@ -370,13 +371,43 @@ class PortInRequest(BaseModel):
             for fmt in formats_to_try:
                 try:
                     parsed_dt = datetime.strptime(v, fmt)
-                    return parsed_dt.strftime('%d/%m/%Y %H:%M:%S')
+                    # Always format as YYYY-MM-DDT02:00:00 regardless of input time
+                    return parsed_dt.strftime('%Y-%m-%d') + 'T02:00:00'
                 except ValueError:
                     continue
                     
-            raise ValueError('Date must be in DD/MM/YYYY HH:MM:SS format (e.g., "20/10/2025 02:00:00")')
+            raise ValueError('Date must be in YYYY-MM-DDT02:00:00 format or other common date formats')
         
         raise ValueError('Invalid date format')
+
+    # @validator('desired_porting_date')
+    # def validate_and_format_datetime(cls, v): # pylint: disable=no-self-argument
+    #     """Validate and format desired_porting_date to 'DD/MM/YYYY HH:MM:SS'"""
+    #     if v is None:
+    #         return None
+            
+    #     if isinstance(v, datetime):
+    #         # Convert datetime object to required string format
+    #         return v.strftime('%d/%m/%Y %H:%M:%S')
+    #     elif isinstance(v, str):
+    #         # Try to parse various formats and convert to required format
+    #         formats_to_try = [
+    #             '%d/%m/%Y %H:%M:%S',  # Exact required format
+    #             '%Y-%m-%d %H:%M:%S',  # ISO with time
+    #             '%d/%m/%Y',           # Date only with slashes
+    #             '%Y-%m-%d',           # ISO date only
+    #         ]
+            
+    #         for fmt in formats_to_try:
+    #             try:
+    #                 parsed_dt = datetime.strptime(v, fmt)
+    #                 return parsed_dt.strftime('%d/%m/%Y %H:%M:%S')
+    #             except ValueError:
+    #                 continue
+                    
+    #         raise ValueError('Date must be in DD/MM/YYYY HH:MM:SS format (e.g., "20/10/2025 02:00:00")')
+        
+    #     raise ValueError('Invalid date format')
 
     iccid: Optional[str] = Field(
         None,

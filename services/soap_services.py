@@ -12,6 +12,7 @@ from templates.soap_templates import PORTABILITY_REQUEST_TEMPLATE, CHECK_PORT_IN
 from services.logger import logger, payload_logger, log_payload
 from datetime import date, datetime
 from templates.soap_templates import REJECT_PORT_OUT_REQUEST, CONFIRM_PORT_OUT_REQUEST, PORTABILITY_REQUEST_TEMPLATE_LEGAL
+from templates.soap_templates import RETURN_REQUEST_TEMPLATE, CANCEL_RETURN_TEMPLATE
 
 
 # Namespace definitions
@@ -1076,4 +1077,28 @@ def soap_port_out_confirm(session_code, reference_code):
     return CONFIRM_PORT_OUT_REQUEST.format(
         session_code=session_code,
         reference_code=reference_code
+    )
+
+def soap_return_request(session_code, request_date, msisdn):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER soap_reject_request reference_code %s", msisdn)
+     
+    return RETURN_REQUEST_TEMPLATE.format(
+        session_code=session_code,
+        request_date=request_date,
+        msisdn=msisdn
+    )
+
+def soap_cancel_return_request(session_code, reference_code, cancellation_reason):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER soap_cancel_return_request reference_code %s", reference_code)
+     
+    return CANCEL_RETURN_TEMPLATE.format(
+        session_code=session_code,
+        reference_code=reference_code,
+        cancellation_reason=cancellation_reason
     )

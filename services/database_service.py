@@ -878,3 +878,195 @@ def save_portability_request_person_legal(alta_data: dict, request_type: str = '
             cursor.close()
         if connection and connection.is_connected():
             connection.close()
+
+def save_return_request_db(request_data: dict, request_type: str = 'RETURN') -> int:
+    """
+    Save return request to database (synchronous)
+    """
+    logger.debug("ENTER return_request_db() %s", request_data)
+    required_fields = ["request_date", "msisdn"]
+    for field in required_fields:
+        if field not in request_data:
+            raise ValueError(f"Missing required field: {field}")
+    
+    connection = None
+    cursor = None
+    try:
+        # Calculate scheduled_at time
+        initial_delta = timedelta(seconds=-5)
+        _, _, scheduled_at = calculate_countdown_working_hours(
+            delta=initial_delta, 
+            with_jitter=False
+        )
+        status_bss = "PROCESSING"
+        status_nc = "PENDING_SUBMIT"
+
+        # Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # FIXED: Removed one NOW() from VALUES - 11 placeholders for 11 values
+        insert_query = """
+        INSERT INTO return_requests 
+        (request_type, msisdn, request_date, 
+        scheduled_at, status_nc, status_bss, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+        RETURNING id
+        """
+
+        values = (
+            request_type,
+            request_data["msisdn"],
+            request_data["request_date"],
+            scheduled_at,
+            status_nc,
+            status_bss
+        )
+        
+        # Execute and commit
+        cursor.execute(insert_query, values)
+        request_id = cursor.fetchone()[0]  # Get the returned ID
+        connection.commit()
+        
+        logger.info("Saved return request with ID: %s, scheduled at: %s", request_id, scheduled_at)
+        return request_id
+        
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        logger.error("Failed to save return request: %s", e)
+        raise
+    finally:
+        # Always close cursor and connection
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# def check_if_cancel_request_id is presnt id db:
+def check_if_cancel_return_request_in_db(request_data: dict) -> bool:
+    """
+    Check if return_request_id present in database (synchronous)
+    Returns True if found, False if not found
+    """
+    logger.debug("ENTER check_if_cancel_return_request_in_db() %s", request_data)
+    
+    # Enhanced validation with better error messages
+    if not request_data:
+        raise ValueError("Request data is empty or None")
+    
+    required_fields = ["reference_code"]
+    missing_fields = [field for field in required_fields if field not in request_data or not request_data[field]]
+    
+    if missing_fields:
+        raise ValueError(f"Missing required field(s): {', '.join(missing_fields)}. Received data: {request_data}")
+    
+    connection = None
+    cursor = None
+    try:
+        # Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        reference_code = request_data["reference_code"]
+        
+        # Validate reference_code is not empty
+        if not reference_code or not reference_code.strip():
+            logger.error("Reference code is empty or whitespace")
+            return False
+        
+        # Query to check if the ID exists in portability_requests table
+        query = """
+            SELECT COUNT(*) as count 
+            FROM return_requests 
+            WHERE reference_code = %s
+        """
+        # logger.debug("Executing query to check reference_code: %s", query)
+        cursor.execute(query, (reference_code.strip(),))
+        result = cursor.fetchone()
+        
+        # Access tuple by index (COUNT(*) is first column)
+        exists = result[0] > 0 if result else False
+        
+        logger.debug("Reference code %s found in DB True/False: %s", reference_code, exists)
+        return exists
+        
+    except Exception as e:
+        logger.error("Error checking reference_code '%s' in DB: %s", 
+                    request_data.get("reference_code"), str(e))
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+def save_cancel_return_request_db(request_data: dict, request_type: str = 'CANCEL') -> int:
+    """
+    Save cancel return request to database (synchronous)
+    """
+    logger.debug("ENTER save_cancel_return_request_db() %s", request_data)
+    required_fields = ["reference_code", "cancellation_reason"]
+    for field in required_fields:
+        if field not in request_data:
+            raise ValueError(f"Missing required field: {field}")
+    
+    connection = None
+    cursor = None
+    try:
+        # Calculate scheduled_at time
+        initial_delta = timedelta(seconds=-5)
+        _, _, scheduled_at = calculate_countdown_working_hours(
+            delta=initial_delta, 
+            with_jitter=False
+        )
+        status_bss = "PROCESSING"
+        status_nc = "PENDING_SUBMIT"
+        reference_code = request_data["reference_code"]
+
+        # Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # FIXED: Removed one NOW() from VALUES - 11 placeholders for 11 values
+        insert_query = """
+        INSERT INTO return_requests 
+        (request_type, cancellation_reason, reference_code,
+        scheduled_at, status_nc, status_bss, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+        RETURNING id
+        """
+
+        values = (
+            request_type,
+            request_data["cancellation_reason"],
+            reference_code,
+            scheduled_at,
+            status_nc,
+            status_bss
+        )
+        
+        logger.debug("Insert values: %s", values)
+        # Execute and commit
+        cursor.execute(insert_query, values)
+
+        # Log the actual SQL that was executed
+        logger.debug("Actual SQL executed: %s", cursor.statement)
+
+        request_id = cursor.fetchone()[0]  # Get the returned ID
+        connection.commit()
+        
+        logger.info("Saved cancel return request with ID: %s,  ref_code = %s, scheduled at: %s %s", request_id, reference_code, scheduled_at, insert_query)
+        return request_id
+        
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        logger.error("Failed to save cancel return request: %s", e)
+        raise
+    finally:
+        # Always close cursor and connection
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()

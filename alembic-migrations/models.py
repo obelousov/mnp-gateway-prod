@@ -1,6 +1,7 @@
 from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, text, ForeignKey, TIMESTAMP, Enum, Text, Index, SmallInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+from sqlalchemy.types import Date
 
 Base = declarative_base()
 
@@ -129,3 +130,33 @@ class PortabilityRequests(Base):
     updated_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
     is_legal_entity = Column(Boolean, nullable=False, server_default=text('0'), comment='Flag indicating if this is a legal entity (1) or individual (0)')
     company_name = Column(String(255), comment='Company name for legal entities')
+
+class ReturnRequests(Base):
+    __tablename__ = 'return_requests'
+    __table_args__ = (
+        Index('idx_return_status_scheduled', 'status_nc', 'scheduled_at'),  # For job scheduling
+        Index('idx_return_msisdn', 'msisdn'),  # For customer lookups
+        Index('idx_return_reference_code', 'reference_code'),  # For NC reference lookups
+        {'comment': 'Mobile number Return requests'}
+    )
+    
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    request_type = Column(String(20), nullable=False, server_default=text("'RETURN'"), comment='Request type: RETURN')
+    request_date = Column(Date, nullable=True, comment='Request date from API in YYYY-MM-DD format')
+    msisdn = Column(String(15), nullable=True, comment='Phone number (9 digits without country code)')
+    cancellation_reason = Column(String(150))
+    reference_code = Column(String(100), comment='CodigoReferencia - Unique reference from NC system')
+    status_bss = Column(String(50), server_default=text("'PROCESSING'"), comment='BSS system status: PROCESSING, COMPLETED, FAILED')
+    status_nc = Column(String(50), server_default=text("'PENDING'"), comment='NC system status: PENDING, PENDING_RESPONSE, COMPLETED, FAILED')
+    response_code = Column(String(20), comment='codigoRespuesta from NC response')
+    response_status = Column(String(20), comment='estado - latest response status from NC')
+    reject_code = Column(String(20), comment='reject status eg RECH_BNUME RECH_PERDI RECH_IDENT RECH_ICCID')
+    description = Column(Text, comment='Response description from NC')
+    retry_count = Column(Integer, server_default=text('0'), comment='Number of retry attempts')
+    last_error = Column(Text, comment='Last error message')
+    error_description = Column(Text, comment='Detailed error description')
+    requested_at = Column(TIMESTAMP, comment='When customer submitted the request')
+    scheduled_at = Column(TIMESTAMP, comment='When to process next (for retries)')
+    completed_at = Column(TIMESTAMP, comment='When request completed successfully')
+    created_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
+    updated_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
