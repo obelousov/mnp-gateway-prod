@@ -15,9 +15,9 @@ from services.auth import verify_basic_auth
 from fastapi.openapi.docs import get_swagger_ui_html
 from ..core.metrics import record_port_in_success, record_port_in_error, record_port_in_processing_time
 from services.database_service import save_return_request_db, check_if_cancel_return_request_in_db
-from porting.spain_nc_return import submit_to_central_node_return, submit_to_central_node_cancel_return
+from porting.spain_nc_return import submit_to_central_node_return, submit_to_central_node_cancel_return, submit_to_central_node_return_status_check
 from services.database_service import save_cancel_return_request_db
-
+from typing import Dict, Any
 
 router = APIRouter()
 
@@ -111,6 +111,11 @@ class ReturnRequestResponseOnline(BaseModel):
         max_length=10,
         examples=["0000 00000", "ACCS PERME", "AREC HORFV"],
         description="Código de respuesta. 10 caracteres máximo"
+    )
+    reference_code: Optional[str] = Field(
+        ...,
+        examples=["29979821251124155700001"],
+        description="Código de referencia"
     )
     description: str = Field(
         ...,
@@ -228,12 +233,13 @@ async def create_return_request_online(request: ReturnRequestOnline):
 
               
         # 3. Submit to NC and get response (you'll need to implement this function)
-        success, response_code, description = submit_to_central_node_return(new_request_id)
+        success, response_code, reference_code, description = submit_to_central_node_return(new_request_id)
         
         # 4. Return the NC response
         return ReturnRequestResponseOnline(
             success=success,
             response_code=response_code or "UNKNOWN",
+            reference_code=reference_code or "",
             description=description or "No response from NC",
             campo_erroneo=None
         )
@@ -431,3 +437,188 @@ async def create_cancel_return_request_online(request: ReturnCancelRequestOnline
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process cancel return request: {str(e)}"
         ) from e
+
+
+class ReturnStatusRequestOnline(BaseModel):
+    """
+    Model for checking return request status | SOAP method: `ConsultarEstadoSolicitudBajaNumeracionMovil`
+    WSDL Reference: 'por:peticionConsultarEstadoSolicitudBajaNumeracionMovil'
+    """
+    reference_code: str = Field(
+        ...,
+        description="Return request reference code returned by NC| WSDL: `por:codigoReferencia`",
+        examples=["29979811251121115100008"],
+        min_length=5
+    )
+
+class ReturnStatusResponseOnline(BaseModel):
+    """ Return request status response model | SOAP method: `ConsultarEstadoSolicitudBajaNumeracionMovilResponse`  
+        WSDL Reference: 'por:respuestaConsultarEstadoSolicitudBajaNumeracionMovil'
+    """
+    success: bool = Field(
+        ...,
+        examples=[True, False],
+        description="Indicates if the operation was successful"
+    )    
+    response_code: str = Field(
+        ...,
+        max_length=10,
+        examples=["0000 00000", "ACCS PERME", "AREC HORFV"],
+        description="Código de respuesta. 10 caracteres máximo"
+    )
+    response_status: str = Field(
+        ...,
+        max_length=50,
+        examples=["APROBADO", "RECHAZADO", "PENDIENTE"],
+        description="Estado actual de la solicitud de baja"
+    )
+    description: str = Field(
+        ...,
+        max_length=512,
+        examples=["some description"],
+        description="Descripcion de la respuesta. 512 caracteres máximo"
+    )
+    campo_erroneo: Optional[CampoErroneo] = Field(
+        None,
+        description="Detalles del campo erróneo si la solicitud falló | WSDL: `co-v1-10:CampoErroneo`",
+        examples=[{
+            "nombre": "codigoReferencia",
+            "descripcion": "Código de referencia no encontrado"
+        }]
+    )
+
+@router.post(
+    '/return-status', 
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(verify_basic_auth)],
+    # response_model=ReturnStatusResponseOnline,
+    summary="Check Return Request Status",
+    description="""
+    Check the current status of a Return request.
+    
+    This endpoint:
+    - Accepts reference code of existing return request
+    - Queries Central Node for current status
+    - Returns response code, status and description
+  
+    **Workflow:**
+    1. Request validation
+    2. Check if reference code exists in DB
+    3. SOAP request to ConsultarEstadoSolicitudBajaNumeracionMovil
+    4. Response processing and return
+  
+    """,
+    response_description="Return request status retrieved",
+    tags=["Spain: Portability Operations"],
+    responses={
+        200: {
+            "description": "Return request status retrieved successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "response_code": "0000 00000", 
+                        "response_status": "APROBADO",
+                        "description": "Solicitud de baja aprobada correctamente",
+                        "campo_erroneo": None
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Invalid request data",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "reference_code in wrong format"
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Return request not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Return request 29979811251121115100008 not found"
+                    }
+                }
+            }
+        },
+        500: {
+            "description": "Internal server error", 
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Failed to retrieve return request status: Connection error"
+                    }
+                }
+            }
+        }
+    }
+)
+async def create_return_status_request_online(request: ReturnStatusRequestOnline) -> Dict[str, Any]:
+    """
+    Check Return Request Status Endpoint
+    
+    Retrieves current status of return number request from Central Node.
+    """
+    try:
+        reference_code = request.reference_code
+        logger.info("--- Checking return request status --- for ref_code: %s", reference_code)
+        
+        # Convert Pydantic model to dict
+        status_data = request.dict()
+        
+        # Check if return request exists in DB
+        if not check_if_cancel_return_request_in_db(status_data):
+            logger.warning("Return request ID %s not found for status check", reference_code)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Return request {reference_code} not found"
+            )
+
+        # 1. Log the incoming payload
+        log_payload('BSS', 'RETURN_STATUS', 'REQUEST', str(status_data))
+
+        # 2. Query Central Node for status
+        response_dict = submit_to_central_node_return_status_check(reference_code)
+        
+        # 3. Log the response payload
+        log_payload('NC', 'RETURN_STATUS', 'RESPONSE', str(response_dict))
+        
+        # 4. Return the raw NC response dictionary directly
+        return convert_spanish_to_english(response_dict)
+        
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.error("Validation error for return status request ref_code %s: %s", reference_code, str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid request data: {str(e)}"
+        ) from e
+    except Exception as e:
+        logger.error("Failed to retrieve return request status for ref_code %s: %s", reference_code, str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve return request status: {str(e)}"
+        ) from e
+    
+def convert_spanish_to_english(response_dict: dict) -> dict:
+    """Convert Spanish field names to English"""
+    mapping = {
+        "codigoRespuesta": "response_code",
+        "descripcion": "description",
+        "codigoReferencia": "reference_code", 
+        "fechaEstado": "status_date",
+        "fechaCreacion": "creation_date",
+        "fechaBajaAbonado": "subscriber_cancellation_date",
+        "codigoOperadorReceptor": "recipient_operator_code",
+        "codigoOperadorDonante": "donor_operator_code",
+        "estado": "status",
+        "causaEstado": "status_reason",
+        "fechaVentanaCambio": "change_window_date"
+    }
+    
+    return {mapping.get(key, key): value for key, value in response_dict.items()}

@@ -223,3 +223,14 @@ CANCEL_RETURN_TEMPLATE ="""
    </soapenv:Body>
 </soapenv:Envelope>
 """
+STATUS_CHECK_RETURN_TEMPLATE ="""
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:por="http://nc.aopm.es/v1-10/portabilidad" xmlns:v1="http://nc.aopm.es/v1-10">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <por:peticionObtenerSolicitudBajaNumeracionMovil>
+         <v1:codigoSesion>{session_code}</v1:codigoSesion>
+         <por:codigoReferencia>{reference_code}</por:codigoReferencia>
+      </por:peticionObtenerSolicitudBajaNumeracionMovil>
+   </soapenv:Body>
+</soapenv:Envelope>
+"""

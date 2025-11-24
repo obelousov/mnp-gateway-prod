@@ -1734,9 +1734,52 @@ if __name__ == "__main__":
 # <?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/"><S:Header/><S:Body><ns7:respuestaObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar xmlns:ns17="http://nc.aopm.es/v1-10/extras/fichero" xmlns:ns16="http://nc.aopm.es/v1-10/fichero" xmlns:ns15="http://nc.aopm.es/v1-7/integracion" xmlns:ns14="http://nc.aopm.es/v1-10" xmlns:ns13="http://nc.aopm.es/v1-10/extras/portabilidad" xmlns:ns12="http://nc.aopm.es/v1-10/extras/informe" xmlns:ns11="http://nc.aopm.es/v1-10/extras/incidencia" xmlns:ns10="http://nc.aopm.es/v1-10/extras/buzon" xmlns:ns9="http://nc.aopm.es/v1-10/portabilidad" xmlns:ns8="http://nc.aopm.es/v1-10/administracion" xmlns:ns7="http://nc.aopm.es/v1-10/buzon" xmlns:ns6="http://nc.aopm.es/v1-10/extras/administracion" xmlns:ns5="http://nc.aopm.es/v1-10/incidencia" xmlns:ns4="http://nc.aopm.es/v1-10/acceso" xmlns:ns3="http://nc.aopm.es/v1-10/extras" xmlns:ns2="http://nc.aopm.es/v1-10/boletin"><ns14:codigoRespuesta>0000 00000</ns14:codigoRespuesta><ns14:descripcion>La operación se ha realizado con éxito</ns14:descripcion><ns14:codigoPeticionPaginada>b63653087d60ebca0afd81001dea65e4</ns14:codigoPeticionPaginada><ns14:totalRegistros>2</ns14:totalRegistros><ns14:ultimaPagina>true</ns14:ultimaPagina><ns7:notificacion><ns14:fechaCreacion>2025-10-31T17:25:33.038+01:00</ns14:fechaCreacion><ns14:sincronizada>false</ns14:sincronizada><ns14:codigoNotificacion>431148150</ns14:codigoNotificacion><ns14:solicitud xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns14:SolicitudIndividualAltaPortabilidadMovil"><ns14:fechaCreacion>2025-10-31T17:25:33.038+01:00</ns14:fechaCreacion><ns14:fechaEstado>2025-10-31T17:25:33.038+01:00</ns14:fechaEstado><ns14:codigoReferencia>79829911251031172500401</ns14:codigoReferencia><ns14:fechaMarcaLectura>2025-10-31T17:25:33.038+01:00</ns14:fechaMarcaLectura><ns14:estado>ASOL</ns14:estado><ns14:fechaLimiteCambioEstado>2025-11-03T14:00:00+01:00</ns14:fechaLimiteCambioEstado><ns14:fechaSolicitudPorAbonado>2025-10-31T00:00:00+01:00</ns14:fechaSolicitudPorAbonado><ns14:codigoOperadorDonante>299</ns14:codigoOperadorDonante><ns14:operadorDonanteAltaExtraordinaria>false</ns14:operadorDonanteAltaExtraordinaria><ns14:codigoOperadorReceptor>798</ns14:codigoOperadorReceptor><ns14:abonado><ns14:documentoIdentificacion><ns14:tipo>NIE</ns14:tipo><ns14:documento>Y3037876D</ns14:documento></ns14:documentoIdentificacion><ns14:datosPersonales xsi:type="ns14:DatosPersonalesAbonadoPersonaFisica"><ns14:nombre>Oleg</ns14:nombre><ns14:primerApellido>Cabrerra</ns14:primerApellido><ns14:segundoApellido>Belousov</ns14:segundoApellido></ns14:datosPersonales></ns14:abonado><ns14:codigoContrato>798-TRAC_12</ns14:codigoContrato><ns14:NRNReceptor>704914</ns14:NRNReceptor><ns14:fechaVentanaCambio>2025-11-04T02:00:00+01:00</ns14:fechaVentanaCambio><ns14:fechaVentanaCambioPorAbonado>false</ns14:fechaVentanaCambioPorAbonado><ns14:MSISDN>621800005</ns14:MSISDN></ns14:solicitud></ns7:notificacion><ns7:notificacion><ns14:fechaCreacion>2025-11-03T11:30:10.389+01:00</ns14:fechaCreacion><ns14:sincronizada>false</ns14:sincronizada><ns14:codigoNotificacion>431154450</ns14:codigoNotificacion><ns14:solicitud xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns14:SolicitudIndividualAltaPortabilidadMovil"><ns14:fechaCreacion>2025-11-03T11:30:10.389+01:00</ns14:fechaCreacion><ns14:fechaEstado>2025-11-03T11:30:10.389+01:00</ns14:fechaEstado><ns14:codigoReferencia>79829911251103113000104</ns14:codigoReferencia><ns14:fechaMarcaLectura>2025-11-03T11:30:10.389+01:00</ns14:fechaMarcaLectura><ns14:estado>ASOL</ns14:estado><ns14:fechaLimiteCambioEstado>2025-11-03T20:00:00+01:00</ns14:fechaLimiteCambioEstado><ns14:fechaSolicitudPorAbonado>2025-11-03T00:00:00+01:00</ns14:fechaSolicitudPorAbonado><ns14:codigoOperadorDonante>299</ns14:codigoOperadorDonante><ns14:operadorDonanteAltaExtraordinaria>false</ns14:operadorDonanteAltaExtraordinaria><ns14:codigoOperadorReceptor>798</ns14:codigoOperadorReceptor><ns14:abonado><ns14:documentoIdentificacion><ns14:tipo>NIE</ns14:tipo><ns14:documento>Y3037876D</ns14:documento></ns14:documentoIdentificacion><ns14:datosPersonales xsi:type="ns14:DatosPersonalesAbonadoPersonaFisica"><ns14:nombre>Oleg</ns14:nombre><ns14:primerApellido>Cabrerra</ns14:primerApellido><ns14:segundoApellido>Belousov</ns14:segundoApellido></ns14:datosPersonales></ns14:abonado><ns14:codigoContrato>798-TRAC_15</ns14:codigoContrato><ns14:NRNReceptor>704914</ns14:NRNReceptor><ns14:fechaVentanaCambio>2025-11-05T02:00:00+01:00</ns14:fechaVentanaCambio><ns14:fechaVentanaCambioPorAbonado>false</ns14:fechaVentanaCambioPorAbonado><ns14:MSISDN>621800006</ns14:MSISDN></ns14:solicitud></ns7:notificacion></ns7:respuestaObtenerNotificacionesAltaPortabilidadMovilComoDonantePendientesConfirmarRechazar></S:Body></S:Envelope>
 # """
 # port-out with legal 
+    xml = """<?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/"><S:Header/><S:Body><ns9:respuestaObtenerSolicitudBajaNumeracionMovil xmlns:ns17="http://nc.aopm.es/v1-10/extras/fichero" xmlns:ns16="http://nc.aopm.es/v1-10/fichero" xmlns:ns15="http://nc.aopm.es/v1-7/integracion" xmlns:ns14="http://nc.aopm.es/v1-10" xmlns:ns13="http://nc.aopm.es/v1-10/extras/portabilidad" xmlns:ns12="http://nc.aopm.es/v1-10/extras/informe" xmlns:ns11="http://nc.aopm.es/v1-10/extras/incidencia" xmlns:ns10="http://nc.aopm.es/v1-10/extras/buzon" xmlns:ns9="http://nc.aopm.es/v1-10/portabilidad" xmlns:ns8="http://nc.aopm.es/v1-10/administracion" xmlns:ns7="http://nc.aopm.es/v1-10/buzon" xmlns:ns6="http://nc.aopm.es/v1-10/extras/administracion" xmlns:ns5="http://nc.aopm.es/v1-10/incidencia" xmlns:ns4="http://nc.aopm.es/v1-10/acceso" xmlns:ns3="http://nc.aopm.es/v1-10/extras" xmlns:ns2="http://nc.aopm.es/v1-10/boletin"><ns14:codigoRespuesta>0000 00000</ns14:codigoRespuesta><ns14:descripcion>La operación se ha realizado con éxito</ns14:descripcion><ns9:solicitud><ns14:fechaCreacion>2025-11-24T18:03:30.627+01:00</ns14:fechaCreacion><ns14:fechaEstado>2025-11-24T18:03:43.414+01:00</ns14:fechaEstado><ns14:codigoReferencia>29979821251124180300009</ns14:codigoReferencia><ns14:MSISDN>552000000</ns14:MSISDN><ns14:fechaBajaAbonado>2025-11-24T00:00:00+01:00</ns14:fechaBajaAbonado><ns14:codigoOperadorReceptor>299</ns14:codigoOperadorReceptor><ns14:codigoOperadorDonante>798</ns14:codigoOperadorDonante><ns14:estado>BCAN</ns14:estado><ns14:causaEstado>CANC_ABONA</ns14:causaEstado><ns14:fechaVentanaCambio>2025-12-29T02:00:00+01:00</ns14:fechaVentanaCambio></ns9:solicitud></ns9:respuestaObtenerSolicitudBajaNumeracionMovil></S:Body></S:Envelope>
+    """
+    field_names = ["codigoRespuesta", "descripcion", "codigoReferencia", "fechaEstado", "fechaCreacion",
+                "fechaBajaAbonado", "codigoOperadorReceptor", "codigoOperadorDonante", "estado",
+                "causaEstado", "fechaVentanaCambio"]
+
+    parsed_tuple = parse_soap_response_list(xml, field_names)
+    parsed_dict = dict(zip(field_names, parsed_tuple))
+
+    print(parsed_dict)
+    print(parsed_dict["codigoRespuesta"])
+    print(parsed_dict["descripcion"])
+    exit()
+
+    print(settings.get_soap_headers('peticionObtenerSolicitudBajaNumeracionMovil') )
+    exit()
+
+    response_code = "0000 00000"
+    response_code_upper = ""
+    if not response_code or not response_code.strip():
+            status_nc = "PENDING_NO_RESPONSE_CODE_RECEIVED"
+    else:
+            response_code_upper = response_code.strip().upper()
+    
+        # Handle 4xx client error responses
+    if response_code_upper.startswith('4'):
+            status_nc = "REQUEST_FAILED"
+        # Handle 5xx server error responses
+    elif response_code_upper.startswith('5'):
+            status_nc = "SERVER_ERROR"
+        # Handle specific success code for return requests
+    elif '0' in response_code_upper and response_code_upper.replace(' ', '').replace('0', '') == '':
+            status_nc = "RETURN_CONFIRMED"  # Fixed typo: COFIRMED -> CONFIRMED
+        # All other non-error response codes are considered rejected returns
+    else:
+            status_nc = "RETURN_REJECTED"
+            
+    status_bss = "CHANGED_TO_" + response_code_upper
+    # print("status nc: %s status bss %s", status_nc, status_bss)
+    print(f"status nc: {status_nc} status bss {status_bss}")
+    exit()
+
+
     from services.database_service import check_if_port_out_request_in_db
     xml_data = """<?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/"><S:Header/><S:Body><ns14:respuestaCrearSolicitudIndividualAltaPortabilidadMovil xmlns:ns17="http://nc.aopm.es/v1-10/extras/fichero" xmlns:ns16="http://nc.aopm.es/v1-10/fichero" xmlns:ns15="http://nc.aopm.es/v1-7/integracion" xmlns:ns14="http://nc.aopm.es/v1-10/portabilidad" xmlns:ns13="http://nc.aopm.es/v1-10/extras/portabilidad" xmlns:ns12="http://nc.aopm.es/v1-10/extras/informe" xmlns:ns11="http://nc.aopm.es/v1-10/extras/incidencia" xmlns:ns10="http://nc.aopm.es/v1-10/extras/buzon" xmlns:ns9="http://nc.aopm.es/v1-10/administracion" xmlns:ns8="http://nc.aopm.es/v1-10/buzon" xmlns:ns7="http://nc.aopm.es/v1-10/extras/administracion" xmlns:ns6="http://nc.aopm.es/v1-10/incidencia" xmlns:ns5="http://nc.aopm.es/v1-10/acceso" xmlns:ns4="http://nc.aopm.es/v1-10/extras" xmlns:ns3="http://nc.aopm.es/v1-10/boletin" xmlns:ns2="http://nc.aopm.es/v1-10"><ns2:codigoRespuesta>ACCS PERME</ns2:codigoRespuesta><ns2:descripcion>No es posible invocar esta operación en horario inhábil</ns2:descripcion></ns14:respuestaCrearSolicitudIndividualAltaPortabilidadMovil></S:Body></S:Envelope>
-"""
+    """
     result = parse_soap_response_list(xml_data, ["codigoRespuesta", "descripcion", "codigoReferencia"])
     print(result)
 
