@@ -606,7 +606,7 @@ async def create_return_status_request_online(request: ReturnStatusRequestOnline
         ) from e
     
 def convert_spanish_to_english(response_dict: dict) -> dict:
-    """Convert Spanish field names to English"""
+    """Convert Spanish field names to English and add success field at the beginning"""
     mapping = {
         "codigoRespuesta": "response_code",
         "descripcion": "description",
@@ -621,4 +621,14 @@ def convert_spanish_to_english(response_dict: dict) -> dict:
         "fechaVentanaCambio": "change_window_date"
     }
     
-    return {mapping.get(key, key): value for key, value in response_dict.items()}
+    # Convert field names
+    english_dict = {mapping.get(key, key): value for key, value in response_dict.items()}
+    
+    # Determine success
+    success = english_dict.get("response_code") == "0000 00000"
+    
+    # Create new dict with success first
+    return {
+        "success": success,
+        **english_dict  # Unpack all other fields
+    }
