@@ -2,10 +2,11 @@ from fastapi import HTTPException
 import mysql.connector
 from mysql.connector import Error
 from config import settings
-from services.time_services import calculate_countdown_working_hours, normalize_datetime
-from datetime import timedelta
+from services.time_services import calculate_countdown_working_hours, normalize_datetime, parse_timestamp
+from datetime import timedelta, datetime
 from services.logger import logger, payload_logger, log_payload
 import aiomysql
+from typing import Dict, Any
 
 async def async_get_db_connection():
     """Create and return async MySQL database connection"""
@@ -1064,6 +1065,115 @@ def save_cancel_return_request_db(request_data: dict, request_type: str = 'CANCE
             connection.rollback()
         logger.error("Failed to save cancel return request: %s", e)
         raise
+    finally:
+        # Always close cursor and connection
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+def update_return_request_with_nc_response(reference_code: str, nc_response: Dict[str, Any]) -> None:
+    """
+    Synchronous version for updating return_requests table
+    Always updates scheduled_at for next check when status is pending
+    """
+    connection = None
+    cursor = None
+
+    logger.info("ENTER update_return_request_with_nc_response() ref_code nc_response: %s  %s",
+                    reference_code, nc_response)
+
+    try:
+        # Extract fields from NC response
+        success = nc_response.get('success')
+        response_code = nc_response.get('response_code')
+        description = nc_response.get('description')
+        response_status = nc_response.get('status')
+        cancellation_reason = nc_response.get('status_reason')
+        
+        # Parse timestamp fields
+        status_date = parse_timestamp(nc_response.get('status_date'))
+        creation_date = parse_timestamp(nc_response.get('creation_date'))
+        subscriber_cancellation_date = parse_timestamp(nc_response.get('subscriber_cancellation_date'))
+        change_window_date = parse_timestamp(nc_response.get('change_window_date'))
+        
+        recipient_operator_code = nc_response.get('recipient_operator_code')
+        donor_operator_code = nc_response.get('donor_operator_code')
+        
+        # Determine status_nc based on response_status and success
+        status_nc = "PENDING"
+        status_bss = "PROCESSING"
+        if success and response_status:
+            status_nc = f"RETURN_{response_status}"
+            status_bss = f"CHANGED_TO_{response_status}"
+        elif not success:
+            status_nc = "FAILED"
+            status_bss = "FAILED"
+        
+        # Calculate scheduled_at - ALWAYS set for next check if status is not final
+        if success and response_status not in ['BDEF']:  # Add other final statuses as needed
+            scheduled_at = datetime.now() + timedelta(seconds=settings.TIME_DELTA_FOR_RETURN_STATUS_CHECK)
+        else:
+            # For final statuses, don't schedule next check
+            scheduled_at = None
+        
+        # Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # Always update the record with new NC response data
+        update_query = """
+        UPDATE return_requests 
+        SET response_code = %s, 
+            description = %s, 
+            response_status = %s, 
+            cancellation_reason = %s, 
+            status_date = %s, 
+            creation_date = %s, 
+            subscriber_cancellation_date = %s, 
+            change_window_date = %s, 
+            recipient_operator_code = %s, 
+            donor_operator_code = %s, 
+            scheduled_at = %s, 
+            status_nc = %s, 
+            status_bss = %s, 
+            updated_at = NOW()
+        WHERE reference_code = %s
+        """
+
+        values = (
+            response_code, 
+            description, 
+            response_status, 
+            cancellation_reason, 
+            status_date, 
+            creation_date, 
+            subscriber_cancellation_date, 
+            change_window_date, 
+            recipient_operator_code, 
+            donor_operator_code, 
+            scheduled_at,
+            status_nc,
+            status_bss,
+            reference_code
+        )
+        
+        # Execute the update
+        cursor.execute(update_query, values)
+        connection.commit()
+
+        # Check if any rows were affected
+        if cursor.rowcount == 0:
+            logger.warning("No rows updated for reference_code: %s", reference_code)
+        else:
+            logger.info("Successfully updated return request for reference_code: %s with status: %s, scheduled_at: %s", 
+                       reference_code, response_status, scheduled_at)
+                
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        logger.error("Failed to update return request for reference_code %s: %s", reference_code, str(e))
+        # Don't re-raise to avoid breaking the main flow
     finally:
         # Always close cursor and connection
         if cursor:

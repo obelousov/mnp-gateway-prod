@@ -22,6 +22,8 @@ from services.logger_simple import log_payload, logger
 from porting.spain_nc import initiate_session, callback_bss_online
 import json
 from services.soap_services import json_from_db_to_soap_cancel_online
+from services.database_service import update_return_request_with_nc_response
+from porting.spain_nc_return import submit_to_central_node_return_status_check, convert_spanish_to_english
 
 WSDL_SERVICE_SPAIN_MOCK = settings.WSDL_SERVICE_SPAIN_MOCK
 WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS = settings.WSDL_SERVICES_SPAIN_MOCK_CHECK_STATUS
@@ -1514,3 +1516,210 @@ def submit_to_central_node_cancel_new(self, mnp_request_id):
         else:
             logger.critical("Max retries exceeded for request %s: %s", mnp_request_id, exc)
             raise exc
+
+from typing import List, Dict, Any
+
+# Celery app instance
+# app = Celery('mnp_tasks')
+
+# @app.task(bind=True)
+@app.task(bind=True, max_retries=3)
+def process_pending_return_status_checks(self) -> None:
+    """
+    Celery task to check status of pending return requests
+    Finds records where request_type=RETURN, response_status != BDEF and current_time > scheduled_at
+    """
+    try:
+        logger.info("--- Starting pending return status checks ---")
+        
+        # 1. Get due requests from database
+        due_requests = get_due_return_requests()
+        
+        if not due_requests:
+            logger.info("No due return requests found")
+            return
+        
+        logger.info("Found %d due return requests to process", len(due_requests))
+        
+        # 2. Process each request
+        successful_count = 0
+        failed_count = 0
+        
+        for request in due_requests:
+            try:
+                process_single_return_status_check(request)
+                successful_count += 1
+            except Exception as e:
+                logger.error("Failed to process return status check for reference_code %s: %s", 
+                           request['reference_code'], str(e))
+                failed_count += 1
+                # The failed request will automatically be picked up in the next run
+                # since its scheduled_at won't be updated to a future time
+                
+        logger.info("--- Completed pending return status checks: %d successful, %d failed ---", 
+                   successful_count, failed_count)
+        
+    except Exception as exc:
+        logger.error("Celery task failed: %s", str(exc))
+        # No retry for the main task - it will run again on the next schedule
+
+
+def get_due_return_requests() -> List[Dict[str, Any]]:
+    """
+    Get return requests that need status checking:
+    - request_type = 'RETURN'
+    - reference_code IS NOT NULL
+    - response_status != 'BDEF' (or NULL)
+    - scheduled_at <= current_time
+    """
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        query = """
+        SELECT reference_code, msisdn, response_status, scheduled_at, status_nc, status_bss, retry_count
+        FROM return_requests 
+        WHERE request_type = 'RETURN'
+          AND reference_code IS NOT NULL
+          AND (response_status IS NULL OR response_status != 'BDEF')
+          AND scheduled_at <= %s
+        ORDER BY scheduled_at ASC
+        LIMIT 100  -- Process in batches to avoid overloading
+        """
+        
+        cursor.execute(query, (datetime.now(),))
+        results = cursor.fetchall()
+        
+        logger.debug("Found %d due return requests", len(results))
+        return results
+        
+    except Exception as e:
+        logger.error("Failed to get due return requests: %s", str(e))
+        return []
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+def process_single_return_status_check(request: Dict[str, Any]) -> None:
+    """
+    Process status check for a single return request
+    Calls BSS callback when response_status changes
+    """
+    reference_code = request['reference_code']
+    msisdn = request['msisdn']
+    current_response_status = request.get('response_status')
+    
+    try:
+        logger.info("Processing status check for reference_code: %s, current status: %s", 
+                   reference_code, current_response_status)
+        
+        # 1. Log the outgoing payload
+        log_payload('BSS', 'RETURN_STATUS', 'REQUEST', f'{{"reference_code": "{reference_code}"}}')
+
+        # 2. Query Central Node for status
+        response_dict = submit_to_central_node_return_status_check(reference_code)
+        
+        # 3. Log the response payload
+        log_payload('NC', 'RETURN_STATUS', 'RESPONSE', str(response_dict))
+        
+        # 4. Convert to English field names
+        response_dict_eng = convert_spanish_to_english(response_dict)
+        
+        # 5. Extract new response_status from the converted response
+        new_response_status = response_dict_eng.get('status')
+        
+        # 6. Check if response_status has changed
+        status_changed = current_response_status != new_response_status
+        
+        # 7. Update status in return_requests
+        update_return_request_with_nc_response(reference_code, response_dict_eng)
+        
+        # 8. Call BSS callback ONLY if response_status changed
+        if status_changed:
+            logger.info("Response status changed from %s to %s, triggering BSS callback for reference_code: %s",
+                       current_response_status, new_response_status, reference_code)
+            
+            # Call the Celery task for BSS callback with full NC response
+            # from .tasks import callback_bss_return  # Import your task
+            
+            # Call the Celery task asynchronously with full NC response dict
+            callback_bss_return.delay(
+                reference_code=reference_code,
+                msisdn=msisdn,
+                nc_response_dict=response_dict_eng  # Send the full converted NC response dictionary
+            )
+        else:
+            logger.info("No status change for reference_code: %s (current: %s, new: %s). Skipping BSS callback.",
+                       reference_code, current_response_status, new_response_status)
+        
+        logger.info("Successfully processed status check for reference_code: %s", reference_code)
+        
+    except Exception as e:
+        logger.error("Failed to process status check for reference_code %s: %s", reference_code, str(e))
+        # No need for special retry handling - the record will remain with scheduled_at <= now()
+        # and will be picked up again in the next task run
+        raise
+
+@app.task(bind=True, max_retries=3)
+def callback_bss_return(self, reference_code, msisdn, nc_response_dict):
+    """
+    REST JSON POST to BSS Webhook for RETURN requests with full NC response data
+    
+    Args:
+        reference_code: codigoreferencia - assigned by NC
+        msisdn: Mobile number
+        nc_response_dict: Complete NC response dictionary with all fields
+    """
+    logger.debug("ENTER callback_bss_return() with reference_code %s msisdn %s",
+                 reference_code, msisdn)
+
+    # Prepare JSON payload with the full NC response data
+    payload = {
+        "reference_code": reference_code,
+        "msisdn": msisdn,
+        **nc_response_dict  # Unpack all NC response fields
+    }
+   
+    logger.debug("Call back BSS for RETURN with full NC response: %s", payload)
+    bss_webhook_url = settings.BSS_WEBHOOK_URL_RETURN  # You might want a separate webhook for returns
+    json_payload = json.dumps(payload, ensure_ascii=False)
+
+    try:
+        response = requests.post(
+            bss_webhook_url,
+            data=json_payload,
+            headers=settings.get_headers_bss(),
+            timeout=settings.APIGEE_API_QUERY_TIMEOUT,
+            verify=settings.SSL_VERIFICATION
+        )
+
+        # Check if request was successful
+        if response.status_code == 200:
+            logger.info(
+                "Call back BSS for RETURN successful: reference_code %s msisdn %s to webhook %s", 
+                reference_code, msisdn, bss_webhook_url
+            )
+            return True
+        else:
+            logger.error(
+                "Webhook failed for RETURN reference_code: %s Status: %s, Response: %s", 
+                reference_code, response.status_code, response.text
+            )
+            return False
+            
+    except requests.exceptions.Timeout as exc:
+        logger.error("Webhook timeout for RETURN reference_code %s", reference_code)
+        self.retry(exc=exc, countdown=120)
+        return False
+    except requests.exceptions.ConnectionError as exc:
+        logger.error("Webhook connection error for RETURN reference_code %s", reference_code)
+        self.retry(exc=exc, countdown=120)
+        return False
+    except requests.exceptions.RequestException as exc:
+        logger.error("Webhook error for RETURN reference_code %s: %s", reference_code, str(exc))
+        self.retry(exc=exc, countdown=120)
+        return False

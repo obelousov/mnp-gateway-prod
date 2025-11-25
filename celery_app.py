@@ -11,6 +11,7 @@ load_dotenv()
 redis_url = os.getenv('REDIS_URL', 'redis://redis:6379/0')
 PENDING_REQUESTS_TIMEOUT = float(os.getenv('PENDING_REQUESTS_TIMEOUT', '60.0'))
 TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK = settings.TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK
+TIME_DELTA_FOR_RETURN_STATUS_CHECK = settings.TIME_DELTA_FOR_RETURN_STATUS_CHECK
 
 # Create the Celery instance
 app = Celery('mnp_worker',
@@ -52,6 +53,11 @@ app.conf.beat_schedule = {
         # 'task': 'tasks_pending_requests.process_pending_requests',
         'task': 'tasks.tasks.check_status_port_out',
         'schedule': TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK, 
+    },
+    'process-check-return': {
+        # 'task': 'tasks_pending_requests.process_pending_requests',
+        'task': 'tasks.tasks.process_pending_return_status_checks',
+        'schedule': TIME_DELTA_FOR_RETURN_STATUS_CHECK, 
     },
 }
 

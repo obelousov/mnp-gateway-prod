@@ -16,7 +16,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from ..core.metrics import record_port_in_success, record_port_in_error, record_port_in_processing_time
 from services.database_service import save_return_request_db, check_if_cancel_return_request_in_db
 from porting.spain_nc_return import submit_to_central_node_return, submit_to_central_node_cancel_return, submit_to_central_node_return_status_check
-from services.database_service import save_cancel_return_request_db
+from services.database_service import save_cancel_return_request_db,update_return_request_with_nc_response
 from typing import Dict, Any
 
 router = APIRouter()
@@ -557,7 +557,7 @@ class ReturnStatusResponseOnline(BaseModel):
         }
     }
 )
-async def create_return_status_request_online(request: ReturnStatusRequestOnline) -> Dict[str, Any]:
+def create_return_status_request_online(request: ReturnStatusRequestOnline) -> Dict[str, Any]:
     """
     Check Return Request Status Endpoint
     
@@ -587,8 +587,13 @@ async def create_return_status_request_online(request: ReturnStatusRequestOnline
         # 3. Log the response payload
         log_payload('NC', 'RETURN_STATUS', 'RESPONSE', str(response_dict))
         
-        # 4. Return the raw NC response dictionary directly
-        return convert_spanish_to_english(response_dict)
+        # 4. Update status in return_requests (synchronous call from async function)
+        response_dict_eng = convert_spanish_to_english(response_dict)
+        update_return_request_with_nc_response(reference_code, response_dict_eng)
+        
+        # 5. Return the raw NC response dictionary directly
+        return response_dict_eng
+        # return convert_spanish_to_english(response_dict)
         
     except HTTPException:
         raise
@@ -604,7 +609,7 @@ async def create_return_status_request_online(request: ReturnStatusRequestOnline
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve return request status: {str(e)}"
         ) from e
-    
+        
 def convert_spanish_to_english(response_dict: dict) -> dict:
     """Convert Spanish field names to English and add success field at the beginning"""
     mapping = {

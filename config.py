@@ -107,6 +107,7 @@ class Settings:
 
     TIME_DELTA_FOR_STATUS_CHECK = int(os.getenv('TIME_DELTA_FOR_STATUS_CHECK', '15'))  # 15 minutes
     TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK = int(os.getenv('TIME_DELTA_FOR_PORT_OUT_STATUS_CHECK', '15'))
+    TIME_DELTA_FOR_RETURN_STATUS_CHECK = int(os.getenv('TIME_DELTA_FOR_RETURN_STATUS_CHECK', '15'))
     TIME_ZONE = os.getenv('TIME_ZONE', 'Europe/Madrid')
 
     WSDL_SERVICE_SPAIN_MOCK = os.getenv('WSDL_SERVICE_SPAIN_MOCK', '')
@@ -114,6 +115,8 @@ class Settings:
     WSDL_SERVICE_SPAIN_MOCK_CANCEL = os.getenv('WSDL_SERVICE_SPAIN_MOCK_CANCEL', '')
     BSS_WEBHOOK_URL = os.getenv('BSS_WEBHOOK_URL', '')
     BSS_WEBHOOK_PORT_OUT_URL = os.getenv('BSS_WEBHOOK_PORT_OUT_URL', '')
+    BSS_WEBHOOK_URL_RETURN = os.getenv('BSS_WEBHOOK_URL_RETURN', '')
+
     SSL_VERIFICATION = os.getenv('SSL_VERIFICATION', '0').lower() in ('1', 'true', 'yes', 'on')
     
     APIGEE_API_KEY = os.getenv('APIGEE_API_KEY', '')

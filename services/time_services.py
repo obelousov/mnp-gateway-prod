@@ -558,6 +558,20 @@ def convert_for_mysql_env_tz(xml_datetime: str) -> datetime:
     # Remove timezone info for MySQL DATETIME
     return dt_madrid.replace(tzinfo=None)
 
+def parse_timestamp(timestamp_str: Optional[str]) -> Optional[datetime]:
+    """
+    Parse timestamp string to datetime object
+    """
+    if not timestamp_str:
+        return None
+        
+    try:
+        # Handle ISO format timestamps with timezone
+        return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+    except (ValueError, AttributeError) as e:
+        logger.warning("Failed to parse timestamp %s: %s", timestamp_str, str(e))
+        return None
+
 # Usage:
 porting_window_str = "2025-10-23T02:00:00+02:00"
 porting_window_db = convert_for_mysql_env_tz(porting_window_str)

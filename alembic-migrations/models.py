@@ -160,3 +160,10 @@ class ReturnRequests(Base):
     completed_at = Column(TIMESTAMP, comment='When request completed successfully')
     created_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
+    # New fields from NC response
+    status_date = Column(TIMESTAMP, comment='statusDate from NC response - status timestamp')
+    creation_date = Column(TIMESTAMP, comment='creationDate from NC response - request creation timestamp')
+    subscriber_cancellation_date = Column(TIMESTAMP, comment='subscriberCancellationDate from NC response')
+    recipient_operator_code = Column(String(10), comment='recipientOperatorCode from NC response')
+    donor_operator_code = Column(String(10), comment='donorOperatorCode from NC response')
+    change_window_date = Column(TIMESTAMP, comment='changeWindowDate from NC response - porting date')
