@@ -127,6 +127,7 @@ class Settings:
     APIGEE_ACCESS_URL = os.getenv('APIGEE_ACCESS_URL', '')
     APIGEE_PORTABILITY_URL = os.getenv('APIGEE_PORTABILITY_URL', '')
     APIGEE_PORT_OUT_URL = os.getenv('APIGEE_PORT_OUT_URL', '')
+    APIGEE_BOLETIN_URL = os.getenv('APIGEE_BOLETIN_URL','')
     PAGE_COUNT_PORT_OUT = os.getenv('PAGE_COUNT_PORT_OUT', '')
 
     PENDING_REQUESTS_TIMEOUT = float(os.getenv('PENDING_REQUESTS_TIMEOUT', '60.0'))  # seconds

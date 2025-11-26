@@ -13,6 +13,7 @@ from services.logger import logger, payload_logger, log_payload
 from datetime import date, datetime
 from templates.soap_templates import REJECT_PORT_OUT_REQUEST, CONFIRM_PORT_OUT_REQUEST, PORTABILITY_REQUEST_TEMPLATE_LEGAL
 from templates.soap_templates import RETURN_REQUEST_TEMPLATE, CANCEL_RETURN_TEMPLATE, STATUS_CHECK_RETURN_TEMPLATE
+from templates.soap_templates import MSISDN_STATUS_CHECK
 
 
 # Namespace definitions
@@ -1114,3 +1115,15 @@ def soap_return_request_status_check(session_code, reference_code):
         session_code=session_code,
         reference_code=reference_code
     )
+
+def msisdn_status_check(session_code, msisdn):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER msisdn_status_check %s",msisdn)
+     
+    return MSISDN_STATUS_CHECK.format(
+        session_code=session_code,
+        msisdn=msisdn
+    )
+

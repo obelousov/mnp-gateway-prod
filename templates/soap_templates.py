@@ -234,3 +234,14 @@ STATUS_CHECK_RETURN_TEMPLATE ="""
    </soapenv:Body>
 </soapenv:Envelope>
 """
+MSISDN_STATUS_CHECK ="""
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:bol="http://nc.aopm.es/v1-10/boletin" xmlns:v1="http://nc.aopm.es/v1-10">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <bol:peticionConsultarNumeracionPortabilidadMovil>
+         <v1:codigoSesion>{session_code}</v1:codigoSesion>
+         <bol:MSISDN>{msisdn}</bol:MSISDN>
+      </bol:peticionConsultarNumeracionPortabilidadMovil>
+   </soapenv:Body>
+</soapenv:Envelope>
+"""
