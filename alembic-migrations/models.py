@@ -1,7 +1,7 @@
 from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, text, ForeignKey, TIMESTAMP, Enum, Text, Index, SmallInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from sqlalchemy.types import Date
+from sqlalchemy.types import Date,JSON
 
 Base = declarative_base()
 
@@ -67,6 +67,8 @@ class PortoutRequest(Base):
     scheduled_at = Column(TIMESTAMP)
     created_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
+    msisdn_single = Column(JSON, comment='List of individual MSISDNs as strings, e.g., ["621800007"]')
+    msisdn_ranges = Column(JSON, comment='List of MSISDN range objects, e.g., [{"initial_value": "621800011", "final_value": "621800012"}]')
     
     # Relationship
     portout_metadata = relationship("PortoutMetadata", back_populates="requests")

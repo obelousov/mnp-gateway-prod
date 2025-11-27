@@ -501,9 +501,11 @@ def callback_bss(self, mnp_request_id, reference_code, session_code, response_st
     # Convert datetime to string for JSON payload
     porting_window_str = porting_window_date.isoformat() if porting_window_date else ""
     # Prepare JSON payload with new English field names
+    request_type = "Port-IN status update"
     payload = {
         "request_id": mnp_request_id,
-        "session_code": session_code,
+        "request_type": request_type,
+        # "session_code": session_code,
         "reference_code":reference_code,
         "msisdn": msisdn,
         "response_code": response_code,
@@ -592,7 +594,146 @@ def callback_bss(self, mnp_request_id, reference_code, session_code, response_st
             connection.close()
 
 @app.task(bind=True, max_retries=3)
-def callback_bss_portout(self,parsed_data):
+def callback_bss_portout(self, parsed_data):
+    """
+    REST JSON POST to BSS Webhook port-out with updated English field names
+    """
+    meta = parsed_data["response_info"]
+    request_code = meta.get("paged_request_code")
+    logger.debug("ENTER callback_bss_portout() with paged_request_code %s", request_code)
+    connection = None
+    cursor = None
+
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        for req in parsed_data["requests"]:
+            reference_code = req.get("reference_code")
+            check_if_submitted_query = "SELECT submitted_to_bss FROM portout_request WHERE reference_code = %s"
+            cursor.execute(check_if_submitted_query, (reference_code,))
+            existing_record = cursor.fetchone()
+            if existing_record and existing_record.get('submitted_to_bss') == 1:
+                logger.debug("Request %s already submitted to BSS - skipping", reference_code)
+                continue
+
+            sub = req["subscriber"]
+            company_name = sub.get("razon_social")
+            if company_name:  # This checks for non-empty and non-None
+                subscriber_type = "COMPANY"
+            else:
+                subscriber_type = "PERSON"
+
+            request_type = "Port-OUT"
+            payload = {
+                "request_type": request_type,
+                "notification_id": req.get("notification_id"),
+                "creation_date": normalize_datetime(req.get("creation_date")),
+                "synchronized": 1 if str(req.get("synchronized")).lower() in ("true", "1") else 0,
+                "reference_code": reference_code,
+                "status": req.get("status"),
+                "state_date": normalize_datetime(req.get("state_date")),
+                "creation_date_request": normalize_datetime(req.get("creation_date_request")),
+                "reading_mark_date": normalize_datetime(req.get("reading_mark_date")),
+                "state_change_deadline": normalize_datetime(req.get("state_change_deadline")),
+                "subscriber_request_date": normalize_datetime(req.get("subscriber_request_date")),
+                "donor_operator_code": req.get("donor_operator_code"),
+                "receiver_operator_code": req.get("receiver_operator_code"),
+                "extraordinary_donor_activation": 1 if str(req.get("extraordinary_donor_activation")).lower() in ("true", "1") else 0,
+                "contract_code": req.get("contract_code"),
+                "receiver_NRN": req.get("receiver_NRN"),
+                "port_window_date": normalize_datetime(req.get("port_window_date")),
+                "port_window_by_subscriber": 1 if str(req.get("port_window_by_subscriber")).lower() in ("true", "1") else 0,
+                "msisdn_single": req.get("msisdn_single", []),  # This should work fine with single MSISDN
+                "msisdn_ranges": req.get("msisdn_ranges", []),  # This should work fine with ranges
+                "subscriber_type": subscriber_type,
+                "company_name": company_name,
+                "subscriber": {
+                    "id_type": sub.get("id_type"),
+                    "id_number": sub.get("id_number"),
+                    "first_name": sub.get("first_name"),
+                    "last_name_1": sub.get("last_name_1"),
+                    "last_name_2": sub.get("last_name_2")
+                }
+            }
+
+            logger.debug("callback_bss_portout payload: %s", payload)
+            bss_webhook_port_out = settings.BSS_WEBHOOK_PORT_OUT_URL
+            json_payload = json.dumps(payload, ensure_ascii=False)
+            
+            try:
+                response = requests.post(
+                    bss_webhook_port_out,
+                    data=json_payload,
+                    headers=settings.get_headers_bss(),
+                    timeout=settings.APIGEE_API_QUERY_TIMEOUT,
+                    verify=settings.SSL_VERIFICATION
+                )
+
+                # Check if request was successful
+                if response.status_code == 200:
+                    logger.info(
+                        "Webhook sent successfully for reference_code %s", reference_code
+                    )
+
+                    # Update database with the actual scheduled time
+                    try: 
+                        update_query = """
+                            UPDATE portout_request 
+                            SET status_bss = %s,
+                            submitted_to_bss = 1,
+                            updated_at = NOW() 
+                            WHERE reference_code = %s
+                        """
+                        cursor.execute(update_query, ("PORT_OUT_REQUEST_SUBMITTED", reference_code))
+                        connection.commit()
+                        
+                        logger.debug(
+                            "Database updated for reference_code %s with status_bss: %s", 
+                            reference_code, "PORT_OUT_REQUEST_SUBMITTED"
+                        )
+                  
+                    except Exception as db_error:
+                        logger.error("Database update failed for reference_code %s: %s", reference_code, str(db_error))
+                        # Don't return False here, continue with other requests
+                        continue
+                else:
+                    logger.error(
+                        "Webhook failed for reference_code %s with status code: %s", 
+                        reference_code, response.status_code
+                    )
+                    # Continue with next request even if this one fails
+                    continue
+                
+            except requests.exceptions.Timeout as exc:
+                logger.error("Webhook timeout for reference_code %s: %s", reference_code, str(exc))
+                self.retry(exc=exc, countdown=120)
+                break  # Break the loop and retry the entire task
+            except requests.exceptions.ConnectionError as exc:
+                logger.error("Webhook connection error for reference_code %s: %s", reference_code, str(exc))
+                self.retry(exc=exc, countdown=120)
+                break  # Break the loop and retry the entire task
+            except requests.exceptions.RequestException as exc:
+                logger.error("Webhook error for reference_code %s: %s", reference_code, str(exc))
+                self.retry(exc=exc, countdown=120)
+                break  # Break the loop and retry the entire task
+
+    except Exception as e:
+        logger.error("Unexpected error in callback_bss_portout: %s", str(e))
+        if connection:
+            connection.rollback()
+        self.retry(exc=e, countdown=120)
+        return False
+
+    finally:
+        # Close connection outside the loop - FIXED PLACEMENT
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+@app.task(bind=True, max_retries=3)
+def callback_bss_portout_01(self,parsed_data):
     """
     REST JSON POST to BSS Webhook port-out with updated English field names
     
@@ -642,7 +783,9 @@ def callback_bss_portout(self,parsed_data):
             "receiver_NRN": req.get("receiver_NRN"),
             "port_window_date": normalize_datetime(req.get("port_window_date")),
             "port_window_by_subscriber": 1 if str(req.get("port_window_by_subscriber")).lower() in ("true", "1") else 0,
-            "MSISDN": req.get("MSISDN"),
+            # "MSISDN": req.get("MSISDN"),
+            "msisdn_single": req.get("msisdn_single"),
+            "msisdn_ranges": req.get("msisdn_ranges"),
             "subscriber_type": subscriber_type,
             "company_name": company_name,
             "subscriber": {
@@ -1678,8 +1821,10 @@ def callback_bss_return(self, reference_code, msisdn, nc_response_dict):
                  reference_code, msisdn)
 
     # Prepare JSON payload with the full NC response data
+    request_type = "Return"
     payload = {
         "reference_code": reference_code,
+        "request_type":request_type,
         "msisdn": msisdn,
         **nc_response_dict  # Unpack all NC response fields
     }

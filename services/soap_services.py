@@ -902,8 +902,107 @@ def create_status_check_port_out_soap_nc(session_code: str, operator_code: str, 
         operator_code=operator_code,
         page_count=page_count
     )
-import xml.etree.ElementTree as ET
+# import xml.etree.ElementTree as ET
 def parse_portout_response(xml_string: str):
+    """
+    Parse SOAP XML with Port-Out notifications and return
+    a structured, English-translated response.
+    """
+    xml_string = xml_string.lstrip().replace('\ufeff', '')
+    root = ET.fromstring(xml_string)
+
+    # Namespace-agnostic text extractor
+    def get_text(element, tag):
+        return element.findtext(f".//{{*}}{tag}")
+
+    # --- Response-level metadata ---
+    response_info = {
+        "response_code": get_text(root, "codigoRespuesta"),
+        "response_description": get_text(root, "descripcion"),
+        "paged_request_code": get_text(root, "codigoPeticionPaginada"),
+        "total_records": get_text(root, "totalRegistros"),
+        "is_last_page": get_text(root, "ultimaPagina")
+    }
+
+    # --- Extract Port-Out notifications ---
+    notifications = root.findall(".//{*}notificacion")
+    requests = []
+
+    for notif in notifications:
+        solicitud = notif.find(".//{*}solicitud")
+        if solicitud is None:
+            continue
+
+        get = lambda tag, _sol=solicitud: _sol.findtext(f".//{{*}}{tag}")
+
+        # Detect if abonado is persona física or jurídica
+        datos_personales = solicitud.find(".//{*}abonado/{*}datosPersonales")
+        razon_social = datos_personales.findtext(".//{*}razonSocial") if datos_personales is not None else None
+
+        # Build subscriber info
+        subscriber = {
+            "id_type": solicitud.findtext(".//{*}documentoIdentificacion/{*}tipo"),
+            "id_number": solicitud.findtext(".//{*}documentoIdentificacion/{*}documento"),
+            "first_name": solicitud.findtext(".//{*}datosPersonales/{*}nombre"),
+            "last_name_1": solicitud.findtext(".//{*}datosPersonales/{*}primerApellido"),
+            "last_name_2": solicitud.findtext(".//{*}datosPersonales/{*}segundoApellido"),
+            "razon_social": razon_social
+        }
+
+        # --- EXTRACT MSISDN DATA ---
+        individual_msisdns = []
+        msisdn_ranges = []
+        
+        # CASE 1: Check for MSISDN RANGES
+        rangos_msisdn = solicitud.findall(".//{*}rangoMSISDN")
+        
+        if rangos_msisdn:
+            for rango in rangos_msisdn:
+                initial_value = rango.findtext(".//{*}valorInicial")
+                final_value = rango.findtext(".//{*}valorFinal")
+                
+                if initial_value and final_value:
+                    msisdn_ranges.append({
+                        "initial_value": initial_value,
+                        "final_value": final_value
+                    })
+        
+        # CASE 2: Check for SINGLE MSISDN (directly under solicitud)
+        single_msisdn = get("MSISDN")
+        if single_msisdn:
+            individual_msisdns.append(single_msisdn)
+
+        request_data = {
+            "notification_id": get_text(notif, "codigoNotificacion"),
+            "creation_date": get_text(notif, "fechaCreacion"),
+            "synchronized": get_text(notif, "sincronizada"),
+            "reference_code": get("codigoReferencia"),
+            "status": get("estado"),
+            "state_date": get("fechaEstado"),
+            "creation_date_request": get("fechaCreacion"),
+            "reading_mark_date": get("fechaMarcaLectura"),
+            "state_change_deadline": get("fechaLimiteCambioEstado"),
+            "subscriber_request_date": get("fechaSolicitudPorAbonado"),
+            "donor_operator_code": get("codigoOperadorDonante"),
+            "receiver_operator_code": get("codigoOperadorReceptor"),
+            "extraordinary_donor_activation": get("operadorDonanteAltaExtraordinaria"),
+            "contract_code": get("codigoContrato"),
+            "receiver_NRN": get("NRNReceptor"),
+            "port_window_date": get("fechaVentanaCambio"),
+            "port_window_by_subscriber": get("fechaVentanaCambioPorAbonado"),
+            "msisdn_single": individual_msisdns,  # Clean list of single MSISDNs
+            "msisdn_ranges": msisdn_ranges,            # Clean list of ranges
+            "subscriber": subscriber
+        }
+
+        requests.append(request_data)
+
+    return {
+        "response_info": response_info,
+        "requests": requests
+    }
+
+def parse_portout_response_001(xml_string: str):
     """
     Parse SOAP XML with Port-Out notifications and return
     a structured, English-translated response.
@@ -970,6 +1069,8 @@ def parse_portout_response(xml_string: str):
             "port_window_date": get("fechaVentanaCambio"),
             "port_window_by_subscriber": get("fechaVentanaCambioPorAbonado"),
             "MSISDN": get("MSISDN"),
+            "MSISDN_range_initial_value": get("valorInicial"),
+            "MSISDN_range_final_value": get("valorFinal"),
             "subscriber": subscriber
         }
 

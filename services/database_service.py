@@ -7,6 +7,7 @@ from datetime import timedelta, datetime
 from services.logger import logger, payload_logger, log_payload
 import aiomysql
 from typing import Dict, Any
+import json
 
 async def async_get_db_connection():
     """Create and return async MySQL database connection"""
@@ -500,6 +501,143 @@ def save_portability_request_new(alta_data: dict, request_type: str = 'PORT_IN',
             connection.close()
 
 def insert_portout_response_to_db(parsed_data):
+    """
+    Inserts parsed Port-Out response data into MySQL tables:
+    - portout_metadata
+    - portout_request
+    using mysql.connector.
+
+    Args:
+        parsed_data (dict): Output of parse_portout_response()
+
+    Insert each time when new port-out response is received and total_records > 0    
+    """
+
+    try:
+        # 1. Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        # 2. Insert into portout_metadata
+        meta = parsed_data["response_info"]
+
+        insert_meta_sql = """
+            INSERT INTO portout_metadata
+                (response_code, response_description, paged_request_code,
+                 total_records, is_last_page)
+            VALUES (%s, %s, %s, %s, %s)
+        """
+        meta_values = (
+            meta.get("response_code"),
+            meta.get("response_description"),
+            meta.get("paged_request_code"),
+            meta.get("total_records"),
+            1 if str(meta.get("is_last_page")).lower() in ("true", "1") else 0
+        )
+
+        cursor.execute(insert_meta_sql, meta_values)
+        metadata_id = cursor.lastrowid  # link to requests
+
+        # 3. Insert each port-out request
+        status_nc = 'RECEIVED'
+        status_bss = 'PENDING'
+        insert_req_sql = """
+            INSERT INTO portout_request (
+                metadata_id, notification_id, creation_date, synchronized,
+                reference_code, status, state_date, creation_date_request,
+                reading_mark_date, state_change_deadline, subscriber_request_date,
+                donor_operator_code, receiver_operator_code, extraordinary_donor_activation,
+                contract_code, receiver_NRN, port_window_date, port_window_by_subscriber, 
+                MSISDN, msisdn_single, msisdn_ranges,
+                subscriber_id_type, subscriber_id_number, subscriber_first_name,
+                subscriber_last_name_1, subscriber_last_name_2, created_at, updated_at, 
+                status_nc, status_bss, subscriber_type, company_name
+            )
+            VALUES (
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, NOW(), NOW(), %s, %s, %s, %s
+            )
+        """
+
+        for req in parsed_data["requests"]:
+            sub = req["subscriber"]
+
+            if check_if_port_out_request_in_db(req):
+                continue
+
+            company_name = sub.get("razon_social")
+            logger.debug("Company Name: %s", company_name)
+            if company_name:  # This checks for non-empty and non-None
+                subscriber_type = "COMPANY"
+            else:
+                subscriber_type = "PERSON"
+            logger.debug("Subscriber_type: %s", subscriber_type)
+
+            # Handle MSISDN data - convert to JSON strings
+            msisdn_single = req.get("msisdn_single", [])
+            msisdn_ranges = req.get("msisdn_ranges", [])
+            
+            # Convert to JSON strings for database storage
+            msisdn_single_json = json.dumps(msisdn_single) if msisdn_single else None
+            msisdn_ranges_json = json.dumps(msisdn_ranges) if msisdn_ranges else None
+
+            # For backward compatibility, get first single MSISDN if available
+            single_msisdn = msisdn_single[0] if msisdn_single else None
+
+            req_values = (
+                metadata_id,
+                req.get("notification_id"),
+                normalize_datetime(req.get("creation_date")),
+                1 if str(req.get("synchronized")).lower() in ("true", "1") else 0,
+                req.get("reference_code"),
+                req.get("status"),
+                normalize_datetime(req.get("state_date")),
+                normalize_datetime(req.get("creation_date_request")),
+                normalize_datetime(req.get("reading_mark_date")),
+                normalize_datetime(req.get("state_change_deadline")),
+                normalize_datetime(req.get("subscriber_request_date")),
+                req.get("donor_operator_code"),
+                req.get("receiver_operator_code"),
+                1 if str(req.get("extraordinary_donor_activation")).lower() in ("true", "1") else 0,
+                req.get("contract_code"),
+                req.get("receiver_NRN"),
+                normalize_datetime(req.get("port_window_date")),
+                1 if str(req.get("port_window_by_subscriber")).lower() in ("true", "1") else 0,
+                single_msisdn,  # For backward compatibility
+                msisdn_single_json,  # New JSON field
+                msisdn_ranges_json,  # New JSON field
+                sub.get("id_type"),
+                sub.get("id_number"),
+                sub.get("first_name"),
+                sub.get("last_name_1"),
+                sub.get("last_name_2"),
+                status_nc,
+                status_bss,
+                subscriber_type,
+                company_name
+            )
+            cursor.execute(insert_req_sql, req_values)
+
+        # 4. Commit all inserts
+        connection.commit()
+        print(f"Successfully inserted metadata_id={metadata_id} with {len(parsed_data['requests'])} requests")
+
+    except Error as e:
+        print(f" MySQL Error: {e}")
+        connection.rollback()
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+def insert_portout_response_to_db_01(parsed_data):
     """
     Inserts parsed Port-Out response data into MySQL tables:
     - portout_metadata
