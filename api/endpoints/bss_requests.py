@@ -217,24 +217,24 @@ class PortInRequest(BaseModel):
     Pydantic class to validate Port-In request payload SOAP method: `SolicitarAltaPortabilidadMovil`
     WSDL Reference: 'por:peticionCrearSolicitudIndividualAltaPortabilidadMovil>'
     """
-    country_code: str = Field(
-        ...,
-        description="ISO 3166-1 alpha-3 country code",
-        examples=["ESP", "ITA"]
-    )
-    @validator('country_code')
-    def validate_country_code(cls, v):  # pylint: disable=no-self-argument
-        """Validate country_code
-        - Must be 3 letters of ISO country code
-        - MNP API supports following country codes: ESP, ITA
-        """
-        allowed_country_codes = ["ESP", "ITA"]
+    # country_code: str = Field(
+    #     ...,
+    #     description="ISO 3166-1 alpha-3 country code",
+    #     examples=["ESP", "ITA"]
+    # )
+    # @validator('country_code')
+    # def validate_country_code(cls, v):  # pylint: disable=no-self-argument
+    #     """Validate country_code
+    #     - Must be 3 letters of ISO country code
+    #     - MNP API supports following country codes: ESP, ITA
+    #     """
+    #     allowed_country_codes = ["ESP", "ITA"]
   
-        # Validate the country_code value (v is the actual value, not a dict)
-        if v not in allowed_country_codes:
-            raise ValueError(f'country_code must be one of: {", ".join(allowed_country_codes)}')
+    #     # Validate the country_code value (v is the actual value, not a dict)
+    #     if v not in allowed_country_codes:
+    #         raise ValueError(f'country_code must be one of: {", ".join(allowed_country_codes)}')
         
-        return v
+    #     return v
 
     # session_code: str = Field(
     #     ...,
