@@ -68,6 +68,7 @@ class BSSWebhookRequest(BaseModel):
     - `5xx` - Server errors (internal system failures)
     """,
     response_description="Acknowledgement of webhook receipt",
+    include_in_schema=False,
     tags=["BSS Webhook"]
 )
 async def bss_webhook(request: BSSWebhookRequest):

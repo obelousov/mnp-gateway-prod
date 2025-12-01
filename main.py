@@ -11,6 +11,7 @@ from api.v1 import bss, metrics, orders, return_request, msisdn_status
 from api.core.middleware import prometheus_middleware
 import logging
 from fastapi.logger import logger as fastapi_logger
+from api.v1.italy import type_1_activation
 
 # Configure Uvicorn to use custom JSON logger
 uvicorn_logger = logging.getLogger("uvicorn")
@@ -157,6 +158,12 @@ app.include_router(
     # tags=["BSS Webhook"]
 )
 
+# include retrun request router
+app.include_router(
+    type_1_activation.router,
+    prefix=settings.API_PREFIX,      # Refer as settings.API_V1_PREFIX
+    # tags=["BSS Webhook"]
+)
 
 @app.get("/",
         include_in_schema=False  # This hides the endpoint from Swagger)
