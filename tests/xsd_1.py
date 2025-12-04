@@ -289,22 +289,69 @@ if __name__ == "__main__":
 # ======================================================================
 # MINIMAL OUTPUT - Only show required fields
 # ======================================================================
-        print("PARSER DEMONSTRATION - Showing required field access\n")
-        result = parser.parse_to_dict(xml_5)
+        # print("PARSER DEMONSTRATION - Showing required field access\n")
+# Our tests 
+        xml_1 = """<?xml version="1.0" encoding="UTF-8"?><LISTA_MNP_RECORD><FILENAME><MITTENTE>PMOB</MITTENTE><DATA>2025-10-20</DATA><ORA>12:00:55</ORA><DESTINATARIO>LMIT</DESTINATARIO><ID_FILE>99137</ID_FILE></FILENAME><ATTIVAZIONE><TIPO_MESSAGGIO>1</TIPO_MESSAGGIO><CODICE_OPERATORE_RECIPIENT>PMOB</CODICE_OPERATORE_RECIPIENT><CODICE_OPERATORE_DONATING>LMIT</CODICE_OPERATORE_DONATING><CODICE_RICHIESTA_RECIPIENT>1-1ZSQ06RB</CODICE_RICHIESTA_RECIPIENT><MSISDN>393508225575</MSISDN><CODICE_FISCALE_PARTITA_IVA>KMRBAU95L02Z344U</CODICE_FISCALE_PARTITA_IVA><DATA_CUT_OVER>2025-10-22</DATA_CUT_OVER><NOME_CLIENTE>ABU</NOME_CLIENTE><COGNOME_CLIENTE>KAMARA</COGNOME_CLIENTE><IMSI>222337987134047</IMSI><FLAG_TRASFERIMENTO_CREDITO>Y</FLAG_TRASFERIMENTO_CREDITO><ROUTING_NUMBER>741</ROUTING_NUMBER><PREVALIDAZIONE>Y</PREVALIDAZIONE><FURTO>N</FURTO></ATTIVAZIONE></LISTA_MNP_RECORD>"""
+        xml_5 = """<?xml version="1.0" encoding="ISO-8859-1"?><LISTA_MNP_RECORD><FILENAME><MITTENTE>COOP</MITTENTE><DATA>2025-10-16</DATA><ORA>20:37:45</ORA><DESTINATARIO>LMIT</DESTINATARIO><ID_FILE>90199</ID_FILE></FILENAME><PRESAINCARICO><TIPO_MESSAGGIO>5</TIPO_MESSAGGIO><CODICE_OPERATORE_RECIPIENT>LMIT</CODICE_OPERATORE_RECIPIENT><CODICE_OPERATORE_DONATING>COOP</CODICE_OPERATORE_DONATING><CODICE_RICHIESTA_RECIPIENT>LYCA2510160025</CODICE_RICHIESTA_RECIPIENT><MSISDN>393500321080</MSISDN><STATO_RICHIESTA_NOTIFICA>6</STATO_RICHIESTA_NOTIFICA></PRESAINCARICO></LISTA_MNP_RECORD>"""
+        xml_2 = """<?xml version="1.0" encoding="utf-8"?><LISTA_MNP_RECORD><FILENAME><MITTENTE>PLTN</MITTENTE><DATA>2025-10-17</DATA><ORA>04:00:05</ORA><DESTINATARIO>LMIT</DESTINATARIO><ID_FILE>11002</ID_FILE></FILENAME><VALIDAZIONE><TIPO_MESSAGGIO>2</TIPO_MESSAGGIO><CODICE_OPERATORE_RECIPIENT>LMIT</CODICE_OPERATORE_RECIPIENT><CODICE_OPERATORE_DONATING>PLTN</CODICE_OPERATORE_DONATING><CODICE_RICHIESTA_RECIPIENT>LYCA2510150233</CODICE_RICHIESTA_RECIPIENT><MSISDN>393762062545</MSISDN><STATO_RICHIESTA_NOTIFICA>0</STATO_RICHIESTA_NOTIFICA><DATA_CUT_OVER>2025-10-20</DATA_CUT_OVER><FLAG_TRASFERIMENTO_CREDITO>Y</FLAG_TRASFERIMENTO_CREDITO><CODICE_OPERATORE_VIRTUALE_DONATING>Q014</CODICE_OPERATORE_VIRTUALE_DONATING></VALIDAZIONE></LISTA_MNP_RECORD>"""
+        xml_3 = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><LISTA_MNP_RECORD><FILENAME><MITTENTE>NOVA</MITTENTE><DATA>2025-10-16</DATA><ORA>10:31:40</ORA><DESTINATARIO>LMIT</DESTINATARIO><ID_FILE>1234</ID_FILE></FILENAME><PORTING><TIPO_MESSAGGIO>3</TIPO_MESSAGGIO><CODICE_OPERATORE_RECIPIENT>NOVA</CODICE_OPERATORE_RECIPIENT><CODICE_OPERATORE_DONATING>TIMG</CODICE_OPERATORE_DONATING><CODICE_RICHIESTA_RECIPIENT>NV251015A284368A5F</CODICE_RICHIESTA_RECIPIENT><MSISDN>393333493043</MSISDN><DATA_CUT_OVER>2025-10-17</DATA_CUT_OVER><FLAG_TRASFERIMENTO_CREDITO>Y</FLAG_TRASFERIMENTO_CREDITO><ROUTING_NUMBER>381</ROUTING_NUMBER></PORTING><PORTING><TIPO_MESSAGGIO>3</TIPO_MESSAGGIO><CODICE_OPERATORE_RECIPIENT>NOVA</CODICE_OPERATORE_RECIPIENT><CODICE_OPERATORE_DONATING>TIMG</CODICE_OPERATORE_DONATING><CODICE_RICHIESTA_RECIPIENT>NV251015769B67054E</CODICE_RICHIESTA_RECIPIENT><MSISDN>393791665997</MSISDN><DATA_CUT_OVER>2025-10-17</DATA_CUT_OVER><FLAG_TRASFERIMENTO_CREDITO>Y</FLAG_TRASFERIMENTO_CREDITO><ROUTING_NUMBER>381</ROUTING_NUMBER></PORTING><PORTING><TIPO_MESSAGGIO>3</TIPO_MESSAGGIO><CODICE_OPERATORE_RECIPIENT>NOVA</CODICE_OPERATORE_RECIPIENT><CODICE_OPERATORE_DONATING>TIMG</CODICE_OPERATORE_DONATING><CODICE_RICHIESTA_RECIPIENT>NV25101513008F6ACE</CODICE_RICHIESTA_RECIPIENT><MSISDN>393288414010</MSISDN><DATA_CUT_OVER>2025-10-17</DATA_CUT_OVER><FLAG_TRASFERIMENTO_CREDITO>Y</FLAG_TRASFERIMENTO_CREDITO><ROUTING_NUMBER>381</ROUTING_NUMBER></PORTING></LISTA_MNP_RECORD>"""
+        xml_6 = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><LISTA_MNP_RECORD><FILENAME><MITTENTE>WIN3</MITTENTE><DATA>2025-10-17</DATA><ORA>05:00:30</ORA><DESTINATARIO>LMIT</DESTINATARIO><ID_FILE>84221</ID_FILE></FILENAME><ESPLETAMENTO><TIPO_MESSAGGIO>6</TIPO_MESSAGGIO><CODICE_OPERATORE_RECIPIENT>LMIT</CODICE_OPERATORE_RECIPIENT><CODICE_OPERATORE_DONATING>WIN3</CODICE_OPERATORE_DONATING><CODICE_RICHIESTA_RECIPIENT>LYCA2510150138</CODICE_RICHIESTA_RECIPIENT><MSISDN>393778469925</MSISDN><DATA_CUT_OVER>2025-10-17</DATA_CUT_OVER><ORA_CUT_OVER>05:00:00</ORA_CUT_OVER><CODICE_OPERATORE>WIN3</CODICE_OPERATORE><STATO_RICHIESTA_NOTIFICA>4</STATO_RICHIESTA_NOTIFICA><FLAG_TRASFERIMENTO_CREDITO>Y</FLAG_TRASFERIMENTO_CREDITO><CODICE_OPERATORE_VIRTUALE_DONATING>Z003</CODICE_OPERATORE_VIRTUALE_DONATING><ROUTING_NUMBER>382</ROUTING_NUMBER></ESPLETAMENTO><ESPLETAMENTO><TIPO_MESSAGGIO>6</TIPO_MESSAGGIO><CODICE_OPERATORE_RECIPIENT>LMIT</CODICE_OPERATORE_RECIPIENT><CODICE_OPERATORE_DONATING>WIN3</CODICE_OPERATORE_DONATING><CODICE_RICHIESTA_RECIPIENT>LYCA2510150135</CODICE_RICHIESTA_RECIPIENT><MSISDN>393385366477</MSISDN><DATA_CUT_OVER>2025-10-17</DATA_CUT_OVER><ORA_CUT_OVER>05:00:00</ORA_CUT_OVER><CODICE_OPERATORE>WIN3</CODICE_OPERATORE><STATO_RICHIESTA_NOTIFICA>4</STATO_RICHIESTA_NOTIFICA><FLAG_TRASFERIMENTO_CREDITO>Y</FLAG_TRASFERIMENTO_CREDITO><CODICE_OPERATORE_VIRTUALE_DONATING>Z003</CODICE_OPERATORE_VIRTUALE_DONATING><ROUTING_NUMBER>382</ROUTING_NUMBER></ESPLETAMENTO></LISTA_MNP_RECORD>"""
+        xml_7 = """<?xml version="1.0" encoding="UTF-8"?>
+<LISTA_MNP_RECORD>
+	<FILENAME>
+		<MITTENTE>FAST</MITTENTE>
+		<DATA>2025-12-03</DATA>
+		<ORA>15:50:29</ORA>
+		<DESTINATARIO>LMIT</DESTINATARIO>
+		<ID_FILE>12891</ID_FILE>
+	</FILENAME>
+	<CESSAZIONE>
+		<TIPO_MESSAGGIO>7</TIPO_MESSAGGIO>
+		<CODICE_OPERATORE_RECIPIENT>FAST</CODICE_OPERATORE_RECIPIENT>
+		<CODICE_RICHIESTA_RECIPIENT>20251203155018FW51</CODICE_RICHIESTA_RECIPIENT>
+		<MSISDN>393402611720</MSISDN>
+		<DATA_CUT_OVER>2025-12-03</DATA_CUT_OVER>
+	</CESSAZIONE>
+</LISTA_MNP_RECORD>"""
+        xml_8 = """<?xml version="1.0" encoding="UTF-8"?>
+<ACKNOWLEDGE>
+  <FILENAME>
+    <MITTENTE>FAST</MITTENTE>
+    <DATA>2025-12-03</DATA>
+    <ORA>15:50:29</ORA>
+    <DESTINATARIO>LMIT</DESTINATARIO>
+    <ID_FILE>12891</ID_FILE>
+  </FILENAME>
+  <TIPO_MESSAGGIO>8</TIPO_MESSAGGIO>
+  <RISULTATO>OK</RISULTATO>
+  <ERRMSG></ERRMSG>
+</ACKNOWLEDGE>"""
+        xml_10 = """<?xml version="1.0" encoding="UTF-8"?><LISTA_MNP_RECORD><FILENAME><MITTENTE>OPIV</MITTENTE><DATA>2025-10-17</DATA><ORA>11:04:43</ORA><DESTINATARIO>LMIT</DESTINATARIO><ID_FILE>238</ID_FILE></FILENAME><TRASFERIMENTOCREDITO><TIPO_MESSAGGIO>10</TIPO_MESSAGGIO><CODICE_OPERATORE_RECIPIENT>LMIT</CODICE_OPERATORE_RECIPIENT><CODICE_OPERATORE_DONATING>OPIV</CODICE_OPERATORE_DONATING><CODICE_RICHIESTA_RECIPIENT>LYCA2510150052</CODICE_RICHIESTA_RECIPIENT><MSISDN>393773739342</MSISDN><DATA_CUT_OVER>2025-10-17</DATA_CUT_OVER><ORA_CUT_OVER>06:04:35</ORA_CUT_OVER><FLAG_TRASFERIMENTO_CREDITO>Y</FLAG_TRASFERIMENTO_CREDITO><DATA_NOTIFICA_CREDITO>2025-10-17</DATA_NOTIFICA_CREDITO><ORA_NOTIFICA_CREDITO>11:03:23</ORA_NOTIFICA_CREDITO><IMPORTO_CREDITO_RESIDUO>1.01</IMPORTO_CREDITO_RESIDUO><CODICE_OPERATORE_VIRTUALE_DONATING>O101</CODICE_OPERATORE_VIRTUALE_DONATING><FLAG_VERIFICA_CREDITO_ANOMALO>N</FLAG_VERIFICA_CREDITO_ANOMALO></TRASFERIMENTOCREDITO></LISTA_MNP_RECORD>"""
+
+        result = parser.parse_to_dict(xml_3)
+        print(result)
+    
         # print(result)
 
         filename_data = result.get('FILENAME', {})
         sender = filename_data.get('SENDER', 'Not found')
         recipient = filename_data.get('RECIPIENT', 'Not found')
         file_id = filename_data.get('FILE_ID', 'Not found')
-        print(f"Sender: {sender}")
-        print(f"Recipient: {recipient}")
-        print(f"File ID: {file_id}")
+        date = filename_data.get('DATE', 'Not found')
+        time = filename_data.get('TIME', 'Not found')
+
+        # print(f"Sender: {sender}")
+        # print(f"Date: {date}")
+        # print(f"Time: {time}")
+        # print(f"Recipient: {recipient}")
+        # print(f"File ID: {file_id}")
 
         # Exit after minimal demonstration
         # Find message type
         msg_type = None
         for key in result:
+            # print("msg type: %s" % msg_type)
+            # print("key: %s" % key)
             if key != 'FILENAME':
                 msg_type = key
                 break
@@ -316,32 +363,38 @@ if __name__ == "__main__":
             if isinstance(msg_data, list):
                 print(f"   Multiple records: {len(msg_data)}")
                 if len(msg_data) > 0:
-                    first_record = msg_data[0]
-                    # Show key fields
-                    print(f"\n   First record key fields:")
-                    key_fields = [
-                        ('PHONE_NUMBER', 'Phone Number'),
-                        ('REQUEST_CODE_RECIPIENT', 'Request Code'),
-                        ('MESSAGE_TYPE_CODE', 'Message Type Code'),
-                        ('RECIPIENT_OPERATOR_CODE', 'Recipient Operator'),
-                        ('DONATING_OPERATOR_CODE', 'Donating Operator')
-                    ]
+                    for index, record in enumerate(msg_data):
+                        print(f"   Record {index + 1}:{record}")
+                        # print(record)
+                        # first_record = msg_data[index]
+                        # Show key fields
+                        # print(f"\n   First record key fields:")
+                        # print(f"   Cuecord key fields:",msg_data)
+                        print(msg_data[index].get("MESSAGE_TYPE_CODE"))
+                        print(msg_data[index].get('PHONE_NUMBER'))
+                    # key_fields = [
+                    #     ('PHONE_NUMBER', 'Phone Number'),
+                    #     ('REQUEST_CODE_RECIPIENT', 'Request Code'),
+                    #     ('MESSAGE_TYPE_CODE', 'Message Type Code'),
+                    #     ('RECIPIENT_OPERATOR_CODE', 'Recipient Operator'),
+                    #     ('DONATING_OPERATOR_CODE', 'Donating Operator')
+                    # ]
 
-                    for field_key, field_name in key_fields:
-                        value = first_record.get(field_key)
-                        if value is not None:
-                            print(f"     {field_name}: {value}")
+                    # for field_key, field_name in key_fields:
+                    #     value = first_record.get(field_key)
+                    #     if value is not None:
+                    #         print(f"     {field_name}: {value}")
 
                     # Show conditional fields based on message type
-                    if msg_type == 'ATTIVAZIONE':
-                        customer_name = f"{first_record.get('CUSTOMER_FIRST_NAME', '')} {first_record.get('CUSTOMER_LAST_NAME', '')}".strip()
-                        if customer_name:
-                            print(f"     Customer: {customer_name}")
-                        print(f"     Cut-over Date: {first_record.get('CUT_OVER_DATE')}")
-                        print(f"     Credit Transfer: {first_record.get('CREDIT_TRANSFER_FLAG')}")
-                    elif msg_type == 'TRASFERIMENTOCREDITO':
-                        print(f"     Remaining Credit: {first_record.get('REMAINING_CREDIT_AMOUNT')}")
-                        print(f"     Credit Notification: {first_record.get('CREDIT_NOTIFICATION_DATE')} {first_record.get('CREDIT_NOTIFICATION_TIME')}")
+                    # if msg_type == 'ATTIVAZIONE':
+                    #     customer_name = f"{first_record.get('CUSTOMER_FIRST_NAME', '')} {first_record.get('CUSTOMER_LAST_NAME', '')}".strip()
+                    #     if customer_name:
+                    #         print(f"     Customer: {customer_name}")
+                    #     print(f"     Cut-over Date: {first_record.get('CUT_OVER_DATE')}")
+                    #     print(f"     Credit Transfer: {first_record.get('CREDIT_TRANSFER_FLAG')}")
+                    # elif msg_type == 'TRASFERIMENTOCREDITO':
+                    #     print(f"     Remaining Credit: {first_record.get('REMAINING_CREDIT_AMOUNT')}")
+                    #     print(f"     Credit Notification: {first_record.get('CREDIT_NOTIFICATION_DATE')} {first_record.get('CREDIT_NOTIFICATION_TIME')}")
 
             elif isinstance(msg_data, dict):
                 print(f"   Single record as dict")
