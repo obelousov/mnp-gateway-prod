@@ -169,3 +169,48 @@ class ReturnRequests(Base):
     recipient_operator_code = Column(String(10), comment='recipientOperatorCode from NC response')
     donor_operator_code = Column(String(10), comment='donorOperatorCode from NC response')
     change_window_date = Column(TIMESTAMP, comment='changeWindowDate from NC response - porting date')
+
+class ItalyPortInRequest(Base):
+    """Table to store Italy MNP port-in request information - message type 1 (ATTIVAZIONE)"""
+    __tablename__ = 'italy_port_in_requests'
+    
+    # Primary key
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # File metadata (from FILENAME section)
+    sender_operator = Column(String(50), nullable=False)
+    file_date = Column(Date, nullable=False)
+    file_time = Column(String(8), nullable=False)
+    recipient_operator = Column(String(50), nullable=False)
+    file_id = Column(String(50), nullable=False)
+    
+    # Message type info
+    message_type_code = Column(String(2), nullable=False)
+    recipient_operator_code = Column(String(50), nullable=False)
+    donating_operator_code = Column(String(50), nullable=False)
+    recipient_request_code = Column(String(50), nullable=False, unique=True)
+    
+    # Customer/Porting info
+    phone_number = Column(String(20), nullable=False)
+    iccid_serial_number = Column(String(20))
+    tax_code_vat = Column(String(50))
+    payment_type = Column(String(3))
+    analog_digital_code = Column(String(1))
+    cut_over_date = Column(Date, nullable=False)
+    customer_first_name = Column(String(100))
+    customer_last_name = Column(String(100))
+    imsi = Column(String(20))
+    
+    # Flags and additional info
+    credit_transfer_flag = Column(String(1), default='N')
+    routing_number = Column(String(10))
+    pre_validation_flag = Column(String(1), default='N')
+    theft_flag = Column(String(1), default='N')
+    
+    # Status tracking - MySQL native timestamps
+    status = Column(String(20), default='PENDING')
+    created_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), nullable=False)
+    updated_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), nullable=False)
+    
+    # Scheduled processing time
+    scheduled_at = Column(DateTime, comment='When this request is scheduled for processing')

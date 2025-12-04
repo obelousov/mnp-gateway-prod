@@ -6,3 +6,6 @@ traefik/acme/acme.json
 traefik/certs/certificate.crt
 traefik/certs/private.key
 alembic-migrations/alembic.ini
+tests/mnp.xsd
+tests/italy_xsd.py
+tests/xsd.py

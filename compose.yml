@@ -213,6 +213,27 @@ services:
     # networks:
     #   - internal-network
 
+  alembic:
+      container_name: alembic-migrations
+      build:
+        context: ./alembic-migrations
+        dockerfile: Dockerfile.alembic
+      working_dir: /app
+      volumes:
+        - ./alembic-migrations:/app  # Mount the alembic-migrations directory
+      env_file:
+        - .env
+      environment:
+        DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@${DB_HOST}:${DB_PORT}/${MYSQL_DATABASE}"
+        TZ: ${TIME_ZONE}
+      networks:
+        - internal-network
+      depends_on:
+        db:
+          condition: service_healthy
+      command: tail -f /dev/null
+      restart: unless-stopped
+      
 volumes:
   logs:
   db_data:

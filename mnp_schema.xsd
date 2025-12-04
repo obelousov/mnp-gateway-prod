@@ -1,0 +1,474 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- edited with XMLSpy v2013 sp1 (x64) (http://www.altova.com) by Stefano Innamorati (POSTE MOBILE SPA) -->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+	<xsd:annotation>
+		<xsd:documentation xml:lang="en">Mobile Number Portability</xsd:documentation>
+	</xsd:annotation>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<!-- ##### DEFINIZIONI FILE MNP #####  -->
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:element name="LISTA_MNP_RECORD">
+		<xsd:complexType>
+			<xsd:sequence>
+				<xsd:element name="FILENAME" type="FILENAME_TYPE"/>
+				<xsd:choice>
+					<xsd:element name="ATTIVAZIONE" type="ATTIVAZIONE_REC" maxOccurs="100"/>
+					<xsd:element name="CESSAZIONE" type="CESSAZIONE_REC" maxOccurs="100"/>
+					<xsd:element name="ANNULLAMENTO" type="ANNULLAMENTO_REC" maxOccurs="100"/>
+					<xsd:element name="PRESAINCARICO" type="PRESAINCARICO_REC" maxOccurs="100"/>
+					<xsd:element name="VALIDAZIONE" type="VALIDAZIONE_REC" maxOccurs="100"/>
+					<xsd:element name="PORTING" type="PORTING_REC" maxOccurs="100"/>
+					<xsd:element name="ESPLETAMENTO" type="ESPLETAMENTO_REC" maxOccurs="100"/>
+					<xsd:element name="PROGETTOADHOC" type="PROGETTOADHOC_REC" maxOccurs="100"/>
+					<xsd:element name="TRASFERIMENTOCREDITO" type="TRASFERIMENTOCREDITO_REC" maxOccurs="100"/>
+					<xsd:element name="SBLOCCOCREDITOANOMALO" type="SBLOCCOCREDITOANOMALO_REC" maxOccurs="100"/>
+					<xsd:element name="SBLOCCOIMPORTO" type="SBLOCCOIMPORTO_REC" maxOccurs="100"/>
+					<xsd:element name="MODIFICACUTOVER" type="MODIFICACUTOVER_REC" maxOccurs="100"/>
+				</xsd:choice>
+			</xsd:sequence>
+		</xsd:complexType>
+	</xsd:element>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<!-- ##### DEFINIZIONE FILE ACKNOWLEDGE #####  -->
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:element name="ACKNOWLEDGE">
+		<xsd:complexType>
+			<xsd:sequence>
+				<xsd:element name="FILENAME" type="FILENAME_TYPE"/>
+				<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="8"/>
+				<xsd:element name="RISULTATO" type="RISULTATO_TYPE"/>
+				<xsd:element name="ERRMSG" type="ERRMSG_TYPE" minOccurs="0"/>
+			</xsd:sequence>
+		</xsd:complexType>
+	</xsd:element>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<!-- ##### DEFINIZIONI DEI RECORD MNP ##### -->
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:complexType name="ATTIVAZIONE_REC">
+		<xsd:sequence>
+			<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="1"/>
+			<xsd:element name="CODICE_OPERATORE_RECIPIENT" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_DONATING" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_RICHIESTA_RECIPIENT" type="CODICE_RICHIESTA_RECIPIENT_TYPE"/>
+			<xsd:element name="CODICE_GRUPPO" type="CODICE_GRUPPO_TYPE" minOccurs="0"/>
+			<xsd:element name="MSISDN" type="PHONE_TYPE"/>
+			<xsd:element name="ADDIZIONALE_1" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="ADDIZIONALE_2" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="ICCID_SERIAL_NUMBER" type="ICCID_SERIAL_NUMBER_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_FISCALE_PARTITA_IVA" type="CODICE_FISCALE_PARTITA_IVA_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_PRE_POST_PAGATO" type="CODICE_PRE_POST_PAGATO_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_ANALOGICO_DIGITALE" type="CODICE_ANALOGICO_DIGITALE_TYPE" minOccurs="0"/>
+			<xsd:element name="DATA_CUT_OVER" type="DATA_TYPE" minOccurs="0"/>
+			<xsd:element name="NOME_CLIENTE" type="NOME_CLIENTE_TYPE" minOccurs="0"/>
+			<xsd:element name="COGNOME_CLIENTE" type="COGNOME_CLIENTE_TYPE" minOccurs="0"/>
+			<xsd:element name="RAGIONE_SOCIALE" type="RAGIONE_SOCIALE_TYPE" minOccurs="0"/>
+			<xsd:element name="TIPO_DOCUMENTO" type="TIPO_DOCUMENTO_TYPE" minOccurs="0"/>
+			<xsd:element name="NUMERO_DOCUMENTO" type="NUMERO_DOCUMENTO_TYPE" minOccurs="0"/>
+			<xsd:element name="IMSI" type="IMSI_TYPE"/>
+			<xsd:element name="FLAG_TRASFERIMENTO_CREDITO" type="FLAG_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_RECIPIENT" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_DONATING" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="ROUTING_NUMBER" type="ROUTING_NUMBER_TYPE"/>
+			<xsd:element name="PREVALIDAZIONE" type="FLAG_TYPE"/>
+			<xsd:element name="FURTO" type="FLAG_TYPE"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:complexType name="CESSAZIONE_REC">
+		<xsd:sequence>
+			<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="7"/>
+			<xsd:element name="CODICE_OPERATORE_RECIPIENT" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_RICHIESTA_RECIPIENT" type="CODICE_RICHIESTA_RECIPIENT_TYPE"/>
+			<xsd:element name="MSISDN" type="PHONE_TYPE"/>
+			<xsd:element name="DATA_CUT_OVER" type="DATA_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_RECIPIENT" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:complexType name="ANNULLAMENTO_REC">
+		<xsd:sequence>
+			<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="4"/>
+			<xsd:element name="CODICE_OPERATORE_RECIPIENT" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_DONATING" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_GRUPPO" type="CODICE_GRUPPO_TYPE"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:complexType name="PRESAINCARICO_REC">
+		<xsd:sequence>
+			<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="5"/>
+			<xsd:element name="CODICE_OPERATORE_RECIPIENT" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_DONATING" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_RICHIESTA_RECIPIENT" type="CODICE_RICHIESTA_RECIPIENT_TYPE"/>
+			<xsd:element name="CODICE_GRUPPO" type="CODICE_GRUPPO_TYPE" minOccurs="0"/>
+			<xsd:element name="MSISDN" type="PHONE_TYPE"/>
+			<xsd:element name="ADDIZIONALE_1" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="ADDIZIONALE_2" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="STATO_RICHIESTA_NOTIFICA" type="STATO_RICHIESTA_NOTIFICA_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_RECIPIENT" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_DONATING" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:complexType name="VALIDAZIONE_REC">
+		<xsd:sequence>
+			<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="2"/>
+			<xsd:element name="CODICE_OPERATORE_RECIPIENT" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_DONATING" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_RICHIESTA_RECIPIENT" type="CODICE_RICHIESTA_RECIPIENT_TYPE"/>
+			<xsd:element name="CODICE_GRUPPO" type="CODICE_GRUPPO_TYPE" minOccurs="0"/>
+			<xsd:element name="MSISDN" type="PHONE_TYPE"/>
+			<xsd:element name="ADDIZIONALE_1" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="ADDIZIONALE_2" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="STATO_RICHIESTA_NOTIFICA" type="STATO_RICHIESTA_NOTIFICA_TYPE"/>
+			<xsd:element name="CODICE_MOTIVO_RIFIUTO" type="CODICE_MOTIVO_RIFIUTO_TYPE" minOccurs="0"/>
+			<xsd:element name="DATA_CUT_OVER" type="DATA_TYPE" minOccurs="0"/>
+			<xsd:element name="FLAG_TRASFERIMENTO_CREDITO" type="FLAG_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_RECIPIENT" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_DONATING" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:complexType name="PORTING_REC">
+		<xsd:sequence>
+			<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="3"/>
+			<xsd:element name="CODICE_OPERATORE_RECIPIENT" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_DONATING" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_RICHIESTA_RECIPIENT" type="CODICE_RICHIESTA_RECIPIENT_TYPE"/>
+			<xsd:element name="MSISDN" type="PHONE_TYPE"/>
+			<xsd:element name="ADDIZIONALE_1" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="ADDIZIONALE_2" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="DATA_CUT_OVER" type="DATA_TYPE"/>
+			<xsd:element name="FLAG_TRASFERIMENTO_CREDITO" type="FLAG_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_RECIPIENT" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_DONATING" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="ROUTING_NUMBER" type="ROUTING_NUMBER_TYPE"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:complexType name="ESPLETAMENTO_REC">
+		<xsd:sequence>
+			<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="6"/>
+			<xsd:element name="CODICE_OPERATORE_RECIPIENT" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_DONATING" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_RICHIESTA_RECIPIENT" type="CODICE_RICHIESTA_RECIPIENT_TYPE"/>
+			<xsd:element name="MSISDN" type="PHONE_TYPE"/>
+			<xsd:element name="ADDIZIONALE_1" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="ADDIZIONALE_2" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="DATA_CUT_OVER" type="DATA_TYPE"/>
+			<xsd:element name="ORA_CUT_OVER" type="ORA_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE" type="OLO_TYPE"/>
+			<xsd:element name="STATO_RICHIESTA_NOTIFICA" type="STATO_RICHIESTA_NOTIFICA_TYPE"/>
+			<xsd:element name="FLAG_TRASFERIMENTO_CREDITO" type="FLAG_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_RECIPIENT" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_DONATING" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="ROUTING_NUMBER" type="ROUTING_NUMBER_TYPE"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:complexType name="PROGETTOADHOC_REC">
+		<xsd:sequence>
+			<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="9"/>
+			<xsd:element name="CODICE_OPERATORE_RECIPIENT" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_DONATING" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_RICHIESTA_RECIPIENT" type="CODICE_RICHIESTA_RECIPIENT_TYPE"/>
+			<xsd:element name="CODICE_GRUPPO" type="CODICE_GRUPPO_TYPE"/>
+			<xsd:element name="MSISDN" type="PHONE_TYPE"/>
+			<xsd:element name="ADDIZIONALE_1" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="ADDIZIONALE_2" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="ICCID_SERIAL_NUMBER" type="ICCID_SERIAL_NUMBER_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_FISCALE_PARTITA_IVA" type="CODICE_FISCALE_PARTITA_IVA_TYPE"/>
+			<xsd:element name="CODICE_PRE_POST_PAGATO" type="CODICE_PRE_POST_PAGATO_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_ANALOGICO_DIGITALE" type="CODICE_ANALOGICO_DIGITALE_TYPE" minOccurs="0"/>
+			<xsd:element name="DATA_CUT_OVER" type="DATA_TYPE" minOccurs="0"/>
+			<xsd:element name="NOME_CLIENTE" type="NOME_CLIENTE_TYPE" minOccurs="0"/>
+			<xsd:element name="COGNOME_CLIENTE" type="COGNOME_CLIENTE_TYPE" minOccurs="0"/>
+			<xsd:element name="RAGIONE_SOCIALE" type="RAGIONE_SOCIALE_TYPE" minOccurs="0"/>
+			<xsd:element name="TIPO_DOCUMENTO" type="TIPO_DOCUMENTO_TYPE" minOccurs="0"/>
+			<xsd:element name="NUMERO_DOCUMENTO" type="NUMERO_DOCUMENTO_TYPE" minOccurs="0"/>
+			<xsd:element name="IMSI" type="IMSI_TYPE"/>
+			<xsd:element name="FLAG_TRASFERIMENTO_CREDITO" type="FLAG_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_RECIPIENT" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_DONATING" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="ROUTING_NUMBER" type="ROUTING_NUMBER_TYPE"/>
+			<xsd:element name="PREVALIDAZIONE" type="FLAG_TYPE" minOccurs="0"/>
+			<xsd:element name="FURTO" type="FLAG_TYPE" minOccurs="0"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:complexType name="TRASFERIMENTOCREDITO_REC">
+		<xsd:sequence>
+			<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="10"/>
+			<xsd:element name="CODICE_OPERATORE_RECIPIENT" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_DONATING" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_RICHIESTA_RECIPIENT" type="CODICE_RICHIESTA_RECIPIENT_TYPE"/>
+			<xsd:element name="MSISDN" type="PHONE_TYPE"/>
+			<xsd:element name="ADDIZIONALE_1" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="ADDIZIONALE_2" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="DATA_CUT_OVER" type="DATA_TYPE"/>
+			<xsd:element name="ORA_CUT_OVER" type="ORA_TYPE"/>
+			<xsd:element name="FLAG_TRASFERIMENTO_CREDITO" type="FLAG_TYPE"/>
+			<xsd:element name="DATA_NOTIFICA_CREDITO" type="DATA_TYPE"/>
+			<xsd:element name="ORA_NOTIFICA_CREDITO" type="ORA_TYPE"/>
+			<xsd:element name="IMPORTO_CREDITO_RESIDUO" type="IMPORTO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_RECIPIENT" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_DONATING" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="FLAG_VERIFICA_CREDITO_ANOMALO" type="FLAG_TYPE"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:complexType name="SBLOCCOCREDITOANOMALO_REC">
+		<xsd:sequence>
+			<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="11"/>
+			<xsd:element name="CODICE_OPERATORE_RECIPIENT" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_DONATING" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_RICHIESTA_RECIPIENT" type="CODICE_RICHIESTA_RECIPIENT_TYPE"/>
+			<xsd:element name="MSISDN" type="PHONE_TYPE"/>
+			<xsd:element name="ADDIZIONALE_1" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="ADDIZIONALE_2" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="DATA_CUT_OVER" type="DATA_TYPE"/>
+			<xsd:element name="ORA_CUT_OVER" type="ORA_TYPE"/>
+			<xsd:element name="FLAG_TRASFERIMENTO_CREDITO" type="FLAG_TYPE"/>
+			<xsd:element name="DATA_NOTIFICA_CREDITO" type="DATA_TYPE"/>
+			<xsd:element name="ORA_NOTIFICA_CREDITO" type="ORA_TYPE"/>
+			<xsd:element name="IMPORTO_CREDITO_RESIDUO" type="IMPORTO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_RECIPIENT" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_DONATING" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:complexType name="SBLOCCOIMPORTO_REC">
+		<xsd:sequence>
+			<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="12"/>
+			<xsd:element name="CODICE_OPERATORE_RECIPIENT" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_DONATING" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_RICHIESTA_RECIPIENT" type="CODICE_RICHIESTA_RECIPIENT_TYPE"/>
+			<xsd:element name="MSISDN" type="PHONE_TYPE"/>
+			<xsd:element name="ADDIZIONALE_1" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="ADDIZIONALE_2" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="DATA_CUT_OVER" type="DATA_TYPE"/>
+			<xsd:element name="ORA_CUT_OVER" type="ORA_TYPE"/>
+			<xsd:element name="FLAG_TRASFERIMENTO_CREDITO" type="FLAG_TYPE"/>
+			<xsd:element name="DATA_NOTIFICA_CREDITO" type="DATA_TYPE"/>
+			<xsd:element name="ORA_NOTIFICA_CREDITO" type="ORA_TYPE"/>
+			<xsd:element name="IMPORTO_CREDITO_RESIDUO" type="IMPORTO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_RECIPIENT" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+			<xsd:element name="CODICE_OPERATORE_VIRTUALE_DONATING" type="OLO_VIRTUALE_TYPE" minOccurs="0"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:complexType name="MODIFICACUTOVER_REC">
+		<xsd:sequence>
+			<xsd:element name="TIPO_MESSAGGIO" type="TIPO_MESSAGGIO_TYPE" fixed="13"/>
+			<xsd:element name="CODICE_OPERATORE_RECIPIENT" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_OPERATORE_DONATING" type="OLO_TYPE"/>
+			<xsd:element name="CODICE_RICHIESTA_RECIPIENT" type="CODICE_RICHIESTA_RECIPIENT_TYPE"/>
+			<xsd:element name="MSISDN" type="PHONE_TYPE"/>
+			<xsd:element name="ADDIZIONALE_1" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="ADDIZIONALE_2" type="PHONE_TYPE" minOccurs="0"/>
+			<xsd:element name="DATA_CUT_OVER" type="DATA_TYPE"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<!-- ##### DEFINIZIONI PARTICOLARI ##### -->
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:simpleType name="OLO_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="BLUI"/>
+			<xsd:enumeration value="BTIT"/>
+			<xsd:enumeration value="COOP"/>
+			<xsd:enumeration value="DMOB"/>
+			<xsd:enumeration value="FAST"/>
+			<xsd:enumeration value="H3GI"/>
+			<xsd:enumeration value="ILIT"/>
+			<xsd:enumeration value="IPSE"/>
+			<xsd:enumeration value="LMIT"/>
+			<xsd:enumeration value="MUND"/>
+			<xsd:enumeration value="NOVA"/>
+			<xsd:enumeration value="NPTS"/>
+			<xsd:enumeration value="OPIV"/>
+			<xsd:enumeration value="PLTN"/>
+			<xsd:enumeration value="PMOB"/>
+			<xsd:enumeration value="SPIT"/>
+			<xsd:enumeration value="TIMG"/>
+			<xsd:enumeration value="TIMT"/>
+			<xsd:enumeration value="WIND"/>
+			<xsd:enumeration value="WIN3"/>
+			<xsd:enumeration value="WLIM"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="PHONE_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:pattern value="393\d{8,12}"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="ID_FILE_TYPE">
+		<xsd:restriction base="xsd:integer">
+			<xsd:minInclusive value="1"/>
+			<xsd:maxInclusive value="99999"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:complexType name="FILENAME_TYPE">
+		<xsd:sequence>
+			<xsd:element name="MITTENTE" type="OLO_TYPE"/>
+			<xsd:element name="DATA" type="xsd:date"/>
+			<xsd:element name="ORA" type="xsd:time"/>
+			<xsd:element name="DESTINATARIO" type="OLO_TYPE"/>
+			<xsd:element name="ID_FILE" type="ID_FILE_TYPE"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<xsd:simpleType name="RISULTATO_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="OK"/>
+			<xsd:enumeration value="ERROR"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="ERRMSG_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:maxLength value="512"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<!-- ##### DEFINIZIONI DEI TIPI DEI TRACCIATI RECORD ##### -->
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<xsd:simpleType name="TIPO_MESSAGGIO_TYPE">
+		<xsd:restriction base="xsd:integer">
+			<xsd:minInclusive value="1"/>
+			<xsd:maxInclusive value="13"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="CODICE_RICHIESTA_RECIPIENT_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:maxLength value="18"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="CODICE_GRUPPO_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:maxLength value="12"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="CODICE_FISCALE_PARTITA_IVA_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:maxLength value="16"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="ICCID_SERIAL_NUMBER_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:maxLength value="19"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="CODICE_PRE_POST_PAGATO_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="PRP"/>
+			<xsd:enumeration value="POP"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="CODICE_ANALOGICO_DIGITALE_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="A"/>
+			<xsd:enumeration value="D"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="DATA_TYPE">
+		<xsd:restriction base="xsd:date"/>
+	</xsd:simpleType>
+	<xsd:simpleType name="ORA_TYPE">
+		<xsd:restriction base="xsd:time"/>
+	</xsd:simpleType>
+	<xsd:simpleType name="STATO_RICHIESTA_NOTIFICA_TYPE">
+		<xsd:restriction base="xsd:integer">
+			<xsd:minInclusive value="0"/>
+			<xsd:maxInclusive value="10"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:complexType name="CODICE_MOTIVO_RIFIUTO_TYPE">
+		<xsd:sequence>
+			<xsd:element name="List_of_Error" type="Error" minOccurs="0" maxOccurs="99"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<!-- ##### enumerazione contente i soli valori previsti dall’allegato 2 Annesso A A.3.3.15 ##### -->
+	<xsd:complexType name="Error">
+		<xsd:sequence>
+			<xsd:element name="Codice" minOccurs="0" maxOccurs="unbounded">
+				<xsd:simpleType>
+					<xsd:restriction base="xsd:integer">
+						<xsd:enumeration value="20"/>
+						<xsd:enumeration value="21"/>
+						<xsd:enumeration value="23"/>
+						<xsd:enumeration value="24"/>
+						<xsd:enumeration value="25"/>
+						<xsd:enumeration value="26"/>
+						<xsd:enumeration value="27"/>
+						<xsd:enumeration value="28"/>
+						<xsd:enumeration value="29"/>
+						<xsd:enumeration value="30"/>
+					</xsd:restriction>
+				</xsd:simpleType>
+			</xsd:element>
+		</xsd:sequence>
+	</xsd:complexType>
+	<xsd:simpleType name="NOME_CLIENTE_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:maxLength value="30"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="COGNOME_CLIENTE_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:maxLength value="50"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="RAGIONE_SOCIALE_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:maxLength value="80"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="TIPO_DOCUMENTO_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="CI"/>
+			<xsd:enumeration value="PA"/>
+			<xsd:enumeration value="PS"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="NUMERO_DOCUMENTO_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:maxLength value="30"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="IMSI_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:maxLength value="15"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="FLAG_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="Y"/>
+			<xsd:enumeration value="N"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="IMPORTO_TYPE">
+		<xsd:restriction base="xsd:decimal">
+			<xsd:totalDigits value="7"/>
+			<xsd:fractionDigits value="2"/>
+			<xsd:minInclusive value="0.00"/>
+			<xsd:maxInclusive value="99999.99"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="OLO_VIRTUALE_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:pattern value="[BCDFHILMNOPQSTVWZ]\d{3}"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="ROUTING_NUMBER_TYPE">
+		<xsd:restriction base="xsd:string">
+			<xsd:maxLength value="3"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+	<!-- XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX -->
+</xsd:schema>

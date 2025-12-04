@@ -104,4 +104,18 @@ print('Connected successfully!')
 conn.close()
 "
 
+20251203
+Italy XSD parser test file added: tests/xsd_1.py
+docker exec mnp-api python -m tests.xsd_1
 
+20251204
+Alembic migrated from separate container to the current main compose.yml/single MNP stack. 
+Now it can be started from the same single compose setup using below commands:
+# Check current state/version
+docker compose exec alembic alembic current
+# Create migration
+docker compose exec alembic alembic revision --autogenerate -m "test run after merge to main compose.yml"
+# Apply migration (!!after verification of the new revision/version script - located in /alembic-migrations/alembic/versions)
+docker compose exec alembic alembic upgrade head
+# If needed, rollback
+docker compose exec alembic alembic downgrade -1
