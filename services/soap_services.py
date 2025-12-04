@@ -11,7 +11,9 @@ from templates.soap_templates import PORTABILITY_REQUEST_TEMPLATE, CHECK_PORT_IN
 # from config import logger
 from services.logger import logger, payload_logger, log_payload
 from datetime import date, datetime
-from templates.soap_templates import REJECT_PORT_OUT_REQUEST, CONFIRM_PORT_OUT_REQUEST
+from templates.soap_templates import REJECT_PORT_OUT_REQUEST, CONFIRM_PORT_OUT_REQUEST, PORTABILITY_REQUEST_TEMPLATE_LEGAL
+from templates.soap_templates import RETURN_REQUEST_TEMPLATE, CANCEL_RETURN_TEMPLATE, STATUS_CHECK_RETURN_TEMPLATE
+from templates.soap_templates import MSISDN_STATUS_CHECK
 
 
 # Namespace definitions
@@ -535,15 +537,15 @@ def parse_soap_response_nested(soap_xml: str, requested_fields: List[str]) -> Tu
     return tuple(result)
 
 
-def json_from_db_to_soap_cancel(json_data):
+def json_from_db_to_soap_cancel(json_data, session_code):
     """
     Convert JSON data from new table structure to SOAP request
     """
-    logger.debug("ENTER json_from_db_to_soap_cancel() %s", json_data)
+    logger.debug("ENTER json_from_db_to_soap_cancel() %s with session code %s", json_data, session_code)
     # print("Received JSON data:", json_data)
      
     return CANCEL_PORT_IN_REQUEST_TEMPLATE.format(
-        session_code=json_data.get('session_code', ''),
+        session_code=session_code,
         reference_code=json_data.get('reference_code'),
         cancellation_reason=json_data.get('cancellation_reason', ''),
         cancellation_initiated_by_donor=json_data.get('cancellation_initiated_by_donor', '')
@@ -754,7 +756,7 @@ def json_from_db_to_soap_online(json_data, session_code):
     Convert JSON data from new table structure to SOAP request
     """
     # logger.debug("ENTER json_from_db_to_soap_new() %s", json_data)
-    logger.debug("ENTER json_from_db_to_soap_new()")
+    logger.debug("ENTER json_from_db_to_soap_new() %s", json_data)
     
     def format_date(value):
         if isinstance(value, (date, datetime)):
@@ -771,20 +773,35 @@ def json_from_db_to_soap_online(json_data, session_code):
         iccid_optional = f"<por:ICCID>{json_data['iccid']}</por:ICCID>"
     
     # Use the actual fields from your table with fallbacks
-    first_name = json_data.get('first_name', 'Test')
-    first_surname = json_data.get('first_surname', 'User')
-    second_surname = json_data.get('second_surname', 'Second')
-    nationality = json_data.get('nationality', 'ESP')
-    
-    # Debug output to verify data
-    # print("=== PERSONAL DATA FROM DATABASE ===")
-    # print(f"first_name: {first_name}")
-    # print(f"first_surname: {first_surname}")
-    # print(f"second_surname: {second_surname}")
-    # print(f"nationality: {nationality}")
-    # print("===================================")
-    
-    result = PORTABILITY_REQUEST_TEMPLATE.format(
+    subscriber_type = json_data.get('subscriber_type', 'person')
+    if subscriber_type.lower() == 'company':
+        company_name = json_data.get('company_name', 'Test Company')
+
+        result = PORTABILITY_REQUEST_TEMPLATE_LEGAL.format(
+        session_code=session_code,
+        request_date=format_date(json_data.get('requested_at')),
+        donor_operator=json_data.get('donor_operator', ''),
+        recipient_operator=json_data.get('recipient_operator', ''),
+        document_type=json_data.get('document_type', 'CIF'),
+        document_number=json_data.get('document_number', ''),
+        company_name=company_name,
+        # first_surname=first_surname,
+        # second_surname=second_surname,
+        # nationality=nationality,
+        contract_code=json_data.get('contract_number', ''),
+        nrn_receptor=json_data.get('routing_number', ''),
+        fecha_ventana_optional=fecha_ventana_optional,
+        iccid_optional=iccid_optional,
+        msisdn=json_data.get('msisdn', '')
+        )
+
+    else:
+        first_name = json_data.get('first_name', 'Test')
+        first_surname = json_data.get('first_surname', 'User')
+        second_surname = json_data.get('second_surname', 'Second')
+        nationality = json_data.get('nationality', 'ESP')
+
+        result = PORTABILITY_REQUEST_TEMPLATE.format(
         session_code=session_code,
         request_date=format_date(json_data.get('requested_at')),
         donor_operator=json_data.get('donor_operator', ''),
@@ -801,6 +818,24 @@ def json_from_db_to_soap_online(json_data, session_code):
         iccid_optional=iccid_optional,
         msisdn=json_data.get('msisdn', '')
     )
+   
+    # result = PORTABILITY_REQUEST_TEMPLATE.format(
+    #     session_code=session_code,
+    #     request_date=format_date(json_data.get('requested_at')),
+    #     donor_operator=json_data.get('donor_operator', ''),
+    #     recipient_operator=json_data.get('recipient_operator', ''),
+    #     document_type=json_data.get('document_type', 'NIE'),
+    #     document_number=json_data.get('document_number', ''),
+    #     first_name=first_name,
+    #     first_surname=first_surname,
+    #     second_surname=second_surname,
+    #     nationality=nationality,
+    #     contract_code=json_data.get('contract_number', ''),
+    #     nrn_receptor=json_data.get('routing_number', ''),
+    #     fecha_ventana_optional=fecha_ventana_optional,
+    #     iccid_optional=iccid_optional,
+    #     msisdn=json_data.get('msisdn', '')
+    # )
     
     return result
 
@@ -867,8 +902,107 @@ def create_status_check_port_out_soap_nc(session_code: str, operator_code: str, 
         operator_code=operator_code,
         page_count=page_count
     )
-import xml.etree.ElementTree as ET
+# import xml.etree.ElementTree as ET
 def parse_portout_response(xml_string: str):
+    """
+    Parse SOAP XML with Port-Out notifications and return
+    a structured, English-translated response.
+    """
+    xml_string = xml_string.lstrip().replace('\ufeff', '')
+    root = ET.fromstring(xml_string)
+
+    # Namespace-agnostic text extractor
+    def get_text(element, tag):
+        return element.findtext(f".//{{*}}{tag}")
+
+    # --- Response-level metadata ---
+    response_info = {
+        "response_code": get_text(root, "codigoRespuesta"),
+        "response_description": get_text(root, "descripcion"),
+        "paged_request_code": get_text(root, "codigoPeticionPaginada"),
+        "total_records": get_text(root, "totalRegistros"),
+        "is_last_page": get_text(root, "ultimaPagina")
+    }
+
+    # --- Extract Port-Out notifications ---
+    notifications = root.findall(".//{*}notificacion")
+    requests = []
+
+    for notif in notifications:
+        solicitud = notif.find(".//{*}solicitud")
+        if solicitud is None:
+            continue
+
+        get = lambda tag, _sol=solicitud: _sol.findtext(f".//{{*}}{tag}")
+
+        # Detect if abonado is persona física or jurídica
+        datos_personales = solicitud.find(".//{*}abonado/{*}datosPersonales")
+        razon_social = datos_personales.findtext(".//{*}razonSocial") if datos_personales is not None else None
+
+        # Build subscriber info
+        subscriber = {
+            "id_type": solicitud.findtext(".//{*}documentoIdentificacion/{*}tipo"),
+            "id_number": solicitud.findtext(".//{*}documentoIdentificacion/{*}documento"),
+            "first_name": solicitud.findtext(".//{*}datosPersonales/{*}nombre"),
+            "last_name_1": solicitud.findtext(".//{*}datosPersonales/{*}primerApellido"),
+            "last_name_2": solicitud.findtext(".//{*}datosPersonales/{*}segundoApellido"),
+            "razon_social": razon_social
+        }
+
+        # --- EXTRACT MSISDN DATA ---
+        individual_msisdns = []
+        msisdn_ranges = []
+        
+        # CASE 1: Check for MSISDN RANGES
+        rangos_msisdn = solicitud.findall(".//{*}rangoMSISDN")
+        
+        if rangos_msisdn:
+            for rango in rangos_msisdn:
+                initial_value = rango.findtext(".//{*}valorInicial")
+                final_value = rango.findtext(".//{*}valorFinal")
+                
+                if initial_value and final_value:
+                    msisdn_ranges.append({
+                        "initial_value": initial_value,
+                        "final_value": final_value
+                    })
+        
+        # CASE 2: Check for SINGLE MSISDN (directly under solicitud)
+        single_msisdn = get("MSISDN")
+        if single_msisdn:
+            individual_msisdns.append(single_msisdn)
+
+        request_data = {
+            "notification_id": get_text(notif, "codigoNotificacion"),
+            "creation_date": get_text(notif, "fechaCreacion"),
+            "synchronized": get_text(notif, "sincronizada"),
+            "reference_code": get("codigoReferencia"),
+            "status": get("estado"),
+            "state_date": get("fechaEstado"),
+            "creation_date_request": get("fechaCreacion"),
+            "reading_mark_date": get("fechaMarcaLectura"),
+            "state_change_deadline": get("fechaLimiteCambioEstado"),
+            "subscriber_request_date": get("fechaSolicitudPorAbonado"),
+            "donor_operator_code": get("codigoOperadorDonante"),
+            "receiver_operator_code": get("codigoOperadorReceptor"),
+            "extraordinary_donor_activation": get("operadorDonanteAltaExtraordinaria"),
+            "contract_code": get("codigoContrato"),
+            "receiver_NRN": get("NRNReceptor"),
+            "port_window_date": get("fechaVentanaCambio"),
+            "port_window_by_subscriber": get("fechaVentanaCambioPorAbonado"),
+            "msisdn_single": individual_msisdns,  # Clean list of single MSISDNs
+            "msisdn_ranges": msisdn_ranges,            # Clean list of ranges
+            "subscriber": subscriber
+        }
+
+        requests.append(request_data)
+
+    return {
+        "response_info": response_info,
+        "requests": requests
+    }
+
+def parse_portout_response_001(xml_string: str):
     """
     Parse SOAP XML with Port-Out notifications and return
     a structured, English-translated response.
@@ -935,6 +1069,8 @@ def parse_portout_response(xml_string: str):
             "port_window_date": get("fechaVentanaCambio"),
             "port_window_by_subscriber": get("fechaVentanaCambioPorAbonado"),
             "MSISDN": get("MSISDN"),
+            "MSISDN_range_initial_value": get("valorInicial"),
+            "MSISDN_range_final_value": get("valorFinal"),
             "subscriber": subscriber
         }
 
@@ -1044,3 +1180,51 @@ def soap_port_out_confirm(session_code, reference_code):
         session_code=session_code,
         reference_code=reference_code
     )
+
+def soap_return_request(session_code, request_date, msisdn):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER soap_reject_request reference_code %s", msisdn)
+     
+    return RETURN_REQUEST_TEMPLATE.format(
+        session_code=session_code,
+        request_date=request_date,
+        msisdn=msisdn
+    )
+
+def soap_cancel_return_request(session_code, reference_code, cancellation_reason):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER soap_cancel_return_request reference_code %s", reference_code)
+     
+    return CANCEL_RETURN_TEMPLATE.format(
+        session_code=session_code,
+        reference_code=reference_code,
+        cancellation_reason=cancellation_reason
+    )
+
+
+def soap_return_request_status_check(session_code, reference_code):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER soap_status_check_return_request %s", reference_code)
+     
+    return STATUS_CHECK_RETURN_TEMPLATE.format(
+        session_code=session_code,
+        reference_code=reference_code
+    )
+
+def msisdn_status_check(session_code, msisdn):
+    """
+    Convert JSON data from new table structure to SOAP request
+    """
+    logger.debug("ENTER msisdn_status_check %s",msisdn)
+     
+    return MSISDN_STATUS_CHECK.format(
+        session_code=session_code,
+        msisdn=msisdn
+    )
+

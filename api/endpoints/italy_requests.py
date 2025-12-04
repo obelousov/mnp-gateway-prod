@@ -7,6 +7,7 @@ import uuid
 import os
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from config import settings
+import aiohttp
 
 # app = FastAPI(title="MNP Gateway API")
 router = APIRouter()
@@ -56,6 +57,7 @@ import os
     """,
     response_description="Immediate acknowledgment with processing queue details",
     tags=["Italy: MNP File Exchange"],
+    include_in_schema=False,  # This hides the endpoint from Swagger)
     responses={
         202: {
             "description": "File accepted and queued for processing",

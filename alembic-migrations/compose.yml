@@ -1,0 +1,14 @@
+services:
+
+  alembic-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.alembic
+    container_name: alembic-app
+    working_dir: /app
+    volumes:
+      - .:/app
+    env_file:
+      - ../.env  # ← Use absolute path to the actual file
+    network_mode: host
+    command: tail -f /dev/null  # Keep container running

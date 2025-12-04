@@ -68,6 +68,7 @@ class BSSWebhookRequest(BaseModel):
     - `5xx` - Server errors (internal system failures)
     """,
     response_description="Acknowledgement of webhook receipt",
+    include_in_schema=False,
     tags=["BSS Webhook"]
 )
 async def bss_webhook(request: BSSWebhookRequest):
@@ -109,6 +110,8 @@ async def bss_webhook(request: BSSWebhookRequest):
     ```
     """
     # Log the incoming request
+    logger.info("Received bss_webhook: %s",request)
+
     logger.info({
         "event": "bss_webhook_received",
         "request_id": request.request_id,
@@ -145,7 +148,7 @@ async def bss_webhook(request: BSSWebhookRequest):
         # - Trigger internal workflows
         # - Notify relevant systems
         
-        logger.info({
+        logger.debug({
             "event": "bss_webhook_processed",
             "request_id": request.request_id,
             "reference_code": request.reference_code,

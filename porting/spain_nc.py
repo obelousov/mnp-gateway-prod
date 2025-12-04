@@ -62,7 +62,7 @@ def initiate_session():
         raise
 
 # def submit_to_central_node_online(mnp_request_id):
-def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
+def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], Optional[str], Optional[str], Optional[str]]:
     """
     Task to submit a porting request to the Central Node.
     This function runs synchronously.
@@ -92,7 +92,7 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         
         if not mnp_request:
             logger.error("Submit to NC: request %s not found", mnp_request_id)
-            return False, "NOT_FOUND", f"Request {mnp_request_id} not found", None
+            return False, "NOT_FOUND", f"Request {mnp_request_id} not found", None, None
 
         session_code = initiate_session()
         print(f"Submit to NC: Processing request - Status: {mnp_request.get('status_nc')}, Response: {mnp_request.get('response_status')}")
@@ -121,21 +121,29 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         log_payload('NC', 'PORT_IN', 'RESPONSE', str(response.text))
         logger.debug("PORT_IN_RESPONSE<-NC:\n%s", str(response.text))
         
-        result = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+        # result = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
+        # response_code, description, reference_code,porting_window_date = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia","fechaVentanaCambio"])
         # result = parse_soap_response_dict(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia"])
-        logger.debug("Parsed SOAP response: %s", str(result))
-        if result and len(result) == 3:
-            response_code, description, reference_code = result
+        # Get the result first without unpacking
+        result = parse_soap_response_list(response.text, ["codigoRespuesta", "descripcion", "codigoReferencia", "fechaVentanaCambio"])
+
+        # Conditional payload logging - only once
+        log_payload('NC', 'PORT_IN', 'RESPONSE', str(response.text))
+        logger.debug("PORT_IN_RESPONSE<-NC:\n%s", str(response.text))
+
+        if result and len(result) == 4:
+            response_code, description, reference_code, porting_window_date = result
+            logger.info("Successfully parsed SOAP response for request %s: %s, %s, %s, %s", 
+                        mnp_request_id, response_code, description, reference_code, porting_window_date)
         else:
             # Handle the case where parsing failed
-            response_code, description, reference_code = None, None, None
+            response_code, description, reference_code, porting_window_date = None, None, None, None
             if result:
-                logger.warning("Failed to parse SOAP response properly for request %s. Expected 3 values, got %s", 
+                logger.error("Failed to parse SOAP response properly for request %s. Expected 4 values, got %s", 
                             mnp_request_id, len(result))
             else:
-                logger.warning("Failed to parse SOAP response properly for request %s. Result is None", mnp_request_id)
-
-        # Determine success based on response code
+                logger.error("Failed to parse SOAP response properly for request %s. Result is None", mnp_request_id)
+                # Determine success based on response code
         if response_code == "0000 00000":  # Adjust this condition based on your actual success codes
             status_nc = 'SUBMITTED'
             status_bss = 'PROCESSING'
@@ -156,7 +164,7 @@ def submit_to_central_node_online(mnp_request_id) -> Tuple[bool, Optional[str], 
         cursor.execute(update_query, (status_nc,session_code, status_bss, response_code, description, reference_code,mnp_request_id))
         connection.commit()
 
-        return success, response_code, description, reference_code
+        return success, response_code, description, reference_code,porting_window_date
 
     except requests.exceptions.RequestException as e:
         logger.error("HTTP error submitting to Central Node: %s", e)  # Remove curly braces
@@ -559,16 +567,19 @@ def submit_to_central_node_port_out_reject_new(alta_data: dict) -> Tuple[bool, O
         status_bss = 'RECEIVED_PORT_OUT_REJECT'
         status_nc = f"STATUS_UPDATED_TO_{response_code}"
 
+        confirm_reject = 2
         update_query = """
             UPDATE portout_request 
             SET status_nc = %s,
                 status_bss = %s,
                 response_code = %s,
                 description = %s,
+                confirm_reject = %s,
+                cancellation_reason = %s,
                 updated_at = NOW()
             WHERE reference_code = %s
         """
-        cursor.execute(update_query, (status_nc, status_bss, response_code, description, reference_code))
+        cursor.execute(update_query, (status_nc, status_bss, response_code, description, confirm_reject, cancellation_reason, reference_code))
         connection.commit()
 
         return success, response_code, description
@@ -668,15 +679,19 @@ def submit_to_central_node_port_out_reject(alta_data: dict) -> Tuple[bool, Optio
         # Update database
         status_bss = 'RECEIVED_PORT_OUT_REJECT'
         status_nc = f"STATUS_UPDATED_TO_{response_code}"
+        confrim_reject = 2
         update_query = """
             UPDATE portout_request 
             SET status_nc = %s, status_bss = %s, response_code = %s, 
-                description = %s, updated_at = NOW()
+                description = %s, 
+                confirm_reject = %s,
+                cancellation_reason = %s,
+                updated_at = NOW()
             WHERE reference_code = %s
         """
         # logger.debug("UPDATE portout_request SET status_nc = %s, status_bss = %s, response_code = %s, description = %s WHERE reference_code = %s", 
         #      status_nc, status_bss, response_code, description, reference_code)
-        cursor.execute(update_query, (status_nc, status_bss, response_code, description, reference_code))
+        cursor.execute(update_query, (status_nc, status_bss, response_code, description, confrim_reject, cancellation_reason, reference_code))
         connection.commit()
 
         return success, response_code, description
@@ -768,15 +783,17 @@ def submit_to_central_node_port_out_confirm(alta_data: dict) -> Tuple[bool, Opti
         # Update database
         status_bss = 'RECEIVED_PORT_OUT_CONFIRM'
         status_nc = f"STATUS_UPDATED_TO_{response_code}"
+        confirm_reject = 1
+        cancellation_reason = ""
         update_query = """
             UPDATE portout_request 
             SET status_nc = %s, status_bss = %s, response_code = %s, 
-                description = %s, updated_at = NOW()
+                description = %s, confirm_reject = %s, cancellation_reason = %s, updated_at = NOW()
             WHERE reference_code = %s
         """
         # logger.debug("UPDATE portout_request SET status_nc = %s, status_bss = %s, response_code = %s, description = %s WHERE reference_code = %s", 
         #      status_nc, status_bss, response_code, description, reference_code)
-        cursor.execute(update_query, (status_nc, status_bss, response_code, description, reference_code))
+        cursor.execute(update_query, (status_nc, status_bss, response_code, description, confirm_reject, cancellation_reason, reference_code))
         connection.commit()
 
         return success, response_code, description
@@ -801,4 +818,110 @@ def submit_to_central_node_port_out_confirm(alta_data: dict) -> Tuple[bool, Opti
             # except:
             #     pass
         if connection and connection.is_connected():
+            connection.close()
+
+def callback_bss_online(mnp_request_id, reference_code, reject_code, session_code, response_status, msisdn, response_code, description, porting_window_date, error_fields=None):
+    """
+    REST JSON POST to BSS Webhook with updated English field names
+    
+    Args:
+        mnp_request_id: Unique identifier for the MNP request
+        session_code: Session code for the transaction (same received in initial query from BSS)
+        reference_code: codigoreferencia - assigned by NC
+        msisdn: Mobile number
+        response_code: codigoRespoesta (eg 0000 0000/AREC NRNRE/AREC NRNRE)
+        callback_bss: causaRechazo (RECH_BNUME,RECH_PERDI,RECH_IDENT,RECH_ICCID,RECH TIEMP,RECH_FMAYO)
+        response_status: estado (ASOL/APOR/AREC)
+        description: Optional description message
+        error_fields: Optional list of error field objects
+        porting_window_date: Optional porting window date
+    """
+    logger.debug("ENTER callback_bss() with request_id %s reference_code %s response_status %s reject_code %s", 
+                 mnp_request_id, reference_code, response_status, reject_code)
+    
+    # Convert datetime to string for JSON payload
+    porting_window_str = porting_window_date.isoformat() if porting_window_date else ""
+    # Prepare JSON payload with new English field names
+    payload = {
+        "request_id": mnp_request_id,
+        "session_code": session_code,
+        "reference_code":reference_code,
+        "reject_code":reject_code,
+        "msisdn": msisdn,
+        "response_code": response_code,
+        "response_status": response_status,
+        "description": description or f"Status update for MNP request {mnp_request_id}",
+        "error_fields": error_fields or [],
+        "porting_window_date": porting_window_str or ""
+    }
+   
+    logger.debug("Webhook payload being sent: %s", payload)
+    # print(f"Webhook payload being sent: {payload}")
+    
+    try:
+        # Send POST request
+        response = requests.post(
+            settings.BSS_WEBHOOK_URL,
+            json=payload,
+            headers=settings.get_headers_bss(),
+            timeout=settings.APIGEE_API_QUERY_TIMEOUT,
+            verify=settings.SSL_VERIFICATION  # Use SSL verification setting
+        )
+        
+        # Check if request was successful
+        if response.status_code == 200:
+            logger.info(
+                "Webhook sent successfully for request_id %s session %s, response_code: %s", 
+                mnp_request_id, session_code, response_status
+            )
+
+            # Update database with the actual scheduled time
+            try: 
+                update_query = """
+                    UPDATE portability_requests 
+                    SET status_bss = %s,
+                    updated_at = NOW() 
+                    WHERE id = %s
+                """
+                connection = get_db_connection()
+                cursor = connection.cursor(dictionary=True)
+                
+                # Map response_code to appropriate status_bss value
+                # status_bss="CANCEL_REQUEST_COMPLETED" if response_status=="ACAN" else "NO_RESPONSE_ON CANCEL_RESPONSE"
+                status_bss = "STATUS_UPDATED_TO_" + response_status.upper()
+                # status_bss = self._map_response_to_status(response_status)
+                cursor.execute(update_query, (status_bss, mnp_request_id))
+                connection.commit()
+                
+                logger.debug(
+                    "Database updated for request %s with status_bss: %s", 
+                    mnp_request_id, status_bss
+                )
+                return True
+                
+            except Exception as db_error:
+                logger.error("Database update failed for request %s: %s", mnp_request_id, str(db_error))
+                return False
+        else:
+            logger.error(
+                "Webhook failed for session %s request_id: %s Status: %s, Response: %s", 
+                session_code, mnp_request_id, response.status_code, response.text
+            )
+            return False
+            
+    except requests.exceptions.Timeout as exc:
+        logger.error("Webhook timeout for session %s request_id %s", session_code, mnp_request_id)
+        # self.retry(exc=exc, countdown=120)
+        return False
+    except requests.exceptions.ConnectionError as exc:
+        logger.error("Webhook connection error for session %s request_id %s", session_code, mnp_request_id)
+        # self.retry(exc=exc, countdown=120)
+        return False
+    except requests.exceptions.RequestException as exc:
+        logger.error("Webhook error for session %s request_id %s: %s", session_code, mnp_request_id, str(exc))
+        # self.retry(exc=exc, countdown=120)
+        return False
+    finally:
+        if 'connection' in locals() and connection and connection.is_connected():
+            cursor.close()
             connection.close()

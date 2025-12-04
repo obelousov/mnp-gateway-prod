@@ -1,0 +1,4 @@
+alembic
+SQLAlchemy
+PyMySQL
+mysqlclient==2.2.0

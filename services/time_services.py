@@ -391,8 +391,8 @@ def calculate_countdown_working_hours(delta, with_jitter=True):
         final_countdown = base_countdown + jitter_seconds
         actual_execution_time = now + timedelta(seconds=final_countdown)
         
-        logger.info("Working Hrs Countdown: %s | Window: %s | Execution: %s", 
-                    status, time_window, actual_execution_time)
+        # logger.info("Working Hrs Countdown: %s | Window: %s | Execution: %s", 
+        #             status, time_window, actual_execution_time)
 
         # return timedelta(seconds=final_countdown), status, actual_execution_time
         return timedelta(seconds=final_countdown), status, actual_execution_time.replace(microsecond=0)
@@ -557,6 +557,20 @@ def convert_for_mysql_env_tz(xml_datetime: str) -> datetime:
     
     # Remove timezone info for MySQL DATETIME
     return dt_madrid.replace(tzinfo=None)
+
+def parse_timestamp(timestamp_str: Optional[str]) -> Optional[datetime]:
+    """
+    Parse timestamp string to datetime object
+    """
+    if not timestamp_str:
+        return None
+        
+    try:
+        # Handle ISO format timestamps with timezone
+        return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+    except (ValueError, AttributeError) as e:
+        logger.warning("Failed to parse timestamp %s: %s", timestamp_str, str(e))
+        return None
 
 # Usage:
 porting_window_str = "2025-10-23T02:00:00+02:00"

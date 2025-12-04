@@ -7,10 +7,11 @@ from config import settings
 from services.logger_simple import logger
 import secrets
 from api.v2.endpoints import health as health_v2
-from api.v1 import bss, metrics, orders
+from api.v1 import bss, metrics, orders, return_request, msisdn_status
 from api.core.middleware import prometheus_middleware
 import logging
 from fastapi.logger import logger as fastapi_logger
+from api.v1.italy import type_1_activation
 
 # Configure Uvicorn to use custom JSON logger
 uvicorn_logger = logging.getLogger("uvicorn")
@@ -143,6 +144,26 @@ app.include_router(
     prefix=settings.API_PREFIX  # This will make endpoints: /api/v1/metrics, /api/v1/health
 )
 
+# include retrun request router
+app.include_router(
+    return_request.router,
+    prefix=settings.API_PREFIX,      # Refer as settings.API_V1_PREFIX
+    # tags=["BSS Webhook"]
+)
+
+# include retrun request router
+app.include_router(
+    msisdn_status.router,
+    prefix=settings.API_PREFIX,      # Refer as settings.API_V1_PREFIX
+    # tags=["BSS Webhook"]
+)
+
+# include retrun request router
+app.include_router(
+    type_1_activation.router,
+    prefix=settings.API_PREFIX,      # Refer as settings.API_V1_PREFIX
+    # tags=["BSS Webhook"]
+)
 
 @app.get("/",
         include_in_schema=False  # This hides the endpoint from Swagger)

@@ -2,10 +2,12 @@ from fastapi import HTTPException
 import mysql.connector
 from mysql.connector import Error
 from config import settings
-from services.time_services import calculate_countdown_working_hours, normalize_datetime
-from datetime import timedelta
+from services.time_services import calculate_countdown_working_hours, normalize_datetime, parse_timestamp
+from datetime import timedelta, datetime
 from services.logger import logger, payload_logger, log_payload
 import aiomysql
+from typing import Dict, Any
+import json
 
 async def async_get_db_connection():
     """Create and return async MySQL database connection"""
@@ -508,6 +510,143 @@ def insert_portout_response_to_db(parsed_data):
     Args:
         parsed_data (dict): Output of parse_portout_response()
 
+    Insert each time when new port-out response is received and total_records > 0    
+    """
+
+    try:
+        # 1. Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        # 2. Insert into portout_metadata
+        meta = parsed_data["response_info"]
+
+        insert_meta_sql = """
+            INSERT INTO portout_metadata
+                (response_code, response_description, paged_request_code,
+                 total_records, is_last_page)
+            VALUES (%s, %s, %s, %s, %s)
+        """
+        meta_values = (
+            meta.get("response_code"),
+            meta.get("response_description"),
+            meta.get("paged_request_code"),
+            meta.get("total_records"),
+            1 if str(meta.get("is_last_page")).lower() in ("true", "1") else 0
+        )
+
+        cursor.execute(insert_meta_sql, meta_values)
+        metadata_id = cursor.lastrowid  # link to requests
+
+        # 3. Insert each port-out request
+        status_nc = 'RECEIVED'
+        status_bss = 'PENDING'
+        insert_req_sql = """
+            INSERT INTO portout_request (
+                metadata_id, notification_id, creation_date, synchronized,
+                reference_code, status, state_date, creation_date_request,
+                reading_mark_date, state_change_deadline, subscriber_request_date,
+                donor_operator_code, receiver_operator_code, extraordinary_donor_activation,
+                contract_code, receiver_NRN, port_window_date, port_window_by_subscriber, 
+                MSISDN, msisdn_single, msisdn_ranges,
+                subscriber_id_type, subscriber_id_number, subscriber_first_name,
+                subscriber_last_name_1, subscriber_last_name_2, created_at, updated_at, 
+                status_nc, status_bss, subscriber_type, company_name
+            )
+            VALUES (
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, NOW(), NOW(), %s, %s, %s, %s
+            )
+        """
+
+        for req in parsed_data["requests"]:
+            sub = req["subscriber"]
+
+            if check_if_port_out_request_in_db(req):
+                continue
+
+            company_name = sub.get("razon_social")
+            logger.debug("Company Name: %s", company_name)
+            if company_name:  # This checks for non-empty and non-None
+                subscriber_type = "COMPANY"
+            else:
+                subscriber_type = "PERSON"
+            logger.debug("Subscriber_type: %s", subscriber_type)
+
+            # Handle MSISDN data - convert to JSON strings
+            msisdn_single = req.get("msisdn_single", [])
+            msisdn_ranges = req.get("msisdn_ranges", [])
+            
+            # Convert to JSON strings for database storage
+            msisdn_single_json = json.dumps(msisdn_single) if msisdn_single else None
+            msisdn_ranges_json = json.dumps(msisdn_ranges) if msisdn_ranges else None
+
+            # For backward compatibility, get first single MSISDN if available
+            single_msisdn = msisdn_single[0] if msisdn_single else None
+
+            req_values = (
+                metadata_id,
+                req.get("notification_id"),
+                normalize_datetime(req.get("creation_date")),
+                1 if str(req.get("synchronized")).lower() in ("true", "1") else 0,
+                req.get("reference_code"),
+                req.get("status"),
+                normalize_datetime(req.get("state_date")),
+                normalize_datetime(req.get("creation_date_request")),
+                normalize_datetime(req.get("reading_mark_date")),
+                normalize_datetime(req.get("state_change_deadline")),
+                normalize_datetime(req.get("subscriber_request_date")),
+                req.get("donor_operator_code"),
+                req.get("receiver_operator_code"),
+                1 if str(req.get("extraordinary_donor_activation")).lower() in ("true", "1") else 0,
+                req.get("contract_code"),
+                req.get("receiver_NRN"),
+                normalize_datetime(req.get("port_window_date")),
+                1 if str(req.get("port_window_by_subscriber")).lower() in ("true", "1") else 0,
+                single_msisdn,  # For backward compatibility
+                msisdn_single_json,  # New JSON field
+                msisdn_ranges_json,  # New JSON field
+                sub.get("id_type"),
+                sub.get("id_number"),
+                sub.get("first_name"),
+                sub.get("last_name_1"),
+                sub.get("last_name_2"),
+                status_nc,
+                status_bss,
+                subscriber_type,
+                company_name
+            )
+            cursor.execute(insert_req_sql, req_values)
+
+        # 4. Commit all inserts
+        connection.commit()
+        print(f"Successfully inserted metadata_id={metadata_id} with {len(parsed_data['requests'])} requests")
+
+    except Error as e:
+        print(f" MySQL Error: {e}")
+        connection.rollback()
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+def insert_portout_response_to_db_01(parsed_data):
+    """
+    Inserts parsed Port-Out response data into MySQL tables:
+    - portout_metadata
+    - portout_request
+    using mysql.connector.
+
+    Args:
+        parsed_data (dict): Output of parse_portout_response()
+
     Insert each time whne new port-out response is received and total_records > 0    
     """
 
@@ -877,4 +1016,305 @@ def save_portability_request_person_legal(alta_data: dict, request_type: str = '
         if cursor:
             cursor.close()
         if connection and connection.is_connected():
+            connection.close()
+
+def save_return_request_db(request_data: dict, request_type: str = 'RETURN') -> int:
+    """
+    Save return request to database (synchronous)
+    """
+    logger.debug("ENTER return_request_db() %s", request_data)
+    required_fields = ["request_date", "msisdn"]
+    for field in required_fields:
+        if field not in request_data:
+            raise ValueError(f"Missing required field: {field}")
+    
+    connection = None
+    cursor = None
+    try:
+        # Calculate scheduled_at time
+        initial_delta = timedelta(seconds=-5)
+        _, _, scheduled_at = calculate_countdown_working_hours(
+            delta=initial_delta, 
+            with_jitter=False
+        )
+        status_bss = "PROCESSING"
+        status_nc = "PENDING_SUBMIT"
+
+        # Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # FIXED: Removed one NOW() from VALUES - 11 placeholders for 11 values
+        insert_query = """
+        INSERT INTO return_requests 
+        (request_type, msisdn, request_date, 
+        scheduled_at, status_nc, status_bss, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+        RETURNING id
+        """
+
+        values = (
+            request_type,
+            request_data["msisdn"],
+            request_data["request_date"],
+            scheduled_at,
+            status_nc,
+            status_bss
+        )
+        
+        # Execute and commit
+        cursor.execute(insert_query, values)
+        request_id = cursor.fetchone()[0]  # Get the returned ID
+        connection.commit()
+        
+        logger.info("Saved return request with ID: %s, scheduled at: %s", request_id, scheduled_at)
+        return request_id
+        
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        logger.error("Failed to save return request: %s", e)
+        raise
+    finally:
+        # Always close cursor and connection
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# def check_if_cancel_request_id is presnt id db:
+def check_if_cancel_return_request_in_db(request_data: dict) -> bool:
+    """
+    Check if return_request_id present in database (synchronous)
+    Returns True if found, False if not found
+    """
+    logger.debug("ENTER check_if_cancel_return_request_in_db() %s", request_data)
+    
+    # Enhanced validation with better error messages
+    if not request_data:
+        raise ValueError("Request data is empty or None")
+    
+    required_fields = ["reference_code"]
+    missing_fields = [field for field in required_fields if field not in request_data or not request_data[field]]
+    
+    if missing_fields:
+        raise ValueError(f"Missing required field(s): {', '.join(missing_fields)}. Received data: {request_data}")
+    
+    connection = None
+    cursor = None
+    try:
+        # Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        reference_code = request_data["reference_code"]
+        
+        # Validate reference_code is not empty
+        if not reference_code or not reference_code.strip():
+            logger.error("Reference code is empty or whitespace")
+            return False
+        
+        # Query to check if the ID exists in portability_requests table
+        query = """
+            SELECT COUNT(*) as count 
+            FROM return_requests 
+            WHERE reference_code = %s
+        """
+        # logger.debug("Executing query to check reference_code: %s", query)
+        cursor.execute(query, (reference_code.strip(),))
+        result = cursor.fetchone()
+        
+        # Access tuple by index (COUNT(*) is first column)
+        exists = result[0] > 0 if result else False
+        
+        logger.debug("Reference code %s found in DB True/False: %s", reference_code, exists)
+        return exists
+        
+    except Exception as e:
+        logger.error("Error checking reference_code '%s' in DB: %s", 
+                    request_data.get("reference_code"), str(e))
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+def save_cancel_return_request_db(request_data: dict, request_type: str = 'CANCEL') -> int:
+    """
+    Save cancel return request to database (synchronous)
+    """
+    logger.debug("ENTER save_cancel_return_request_db() %s", request_data)
+    required_fields = ["reference_code", "cancellation_reason"]
+    for field in required_fields:
+        if field not in request_data:
+            raise ValueError(f"Missing required field: {field}")
+    
+    connection = None
+    cursor = None
+    try:
+        # Calculate scheduled_at time
+        initial_delta = timedelta(seconds=-5)
+        _, _, scheduled_at = calculate_countdown_working_hours(
+            delta=initial_delta, 
+            with_jitter=False
+        )
+        status_bss = "PROCESSING"
+        status_nc = "PENDING_SUBMIT"
+        reference_code = request_data["reference_code"]
+
+        # Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # FIXED: Removed one NOW() from VALUES - 11 placeholders for 11 values
+        insert_query = """
+        INSERT INTO return_requests 
+        (request_type, cancellation_reason, reference_code,
+        scheduled_at, status_nc, status_bss, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+        RETURNING id
+        """
+
+        values = (
+            request_type,
+            request_data["cancellation_reason"],
+            reference_code,
+            scheduled_at,
+            status_nc,
+            status_bss
+        )
+        
+        logger.debug("Insert values: %s", values)
+        # Execute and commit
+        cursor.execute(insert_query, values)
+
+        # Log the actual SQL that was executed
+        logger.debug("Actual SQL executed: %s", cursor.statement)
+
+        request_id = cursor.fetchone()[0]  # Get the returned ID
+        connection.commit()
+        
+        logger.info("Saved cancel return request with ID: %s,  ref_code = %s, scheduled at: %s %s", request_id, reference_code, scheduled_at, insert_query)
+        return request_id
+        
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        logger.error("Failed to save cancel return request: %s", e)
+        raise
+    finally:
+        # Always close cursor and connection
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+def update_return_request_with_nc_response(reference_code: str, nc_response: Dict[str, Any]) -> None:
+    """
+    Synchronous version for updating return_requests table
+    Always updates scheduled_at for next check when status is pending
+    """
+    connection = None
+    cursor = None
+
+    logger.info("ENTER update_return_request_with_nc_response() ref_code nc_response: %s  %s",
+                    reference_code, nc_response)
+
+    try:
+        # Extract fields from NC response
+        success = nc_response.get('success')
+        response_code = nc_response.get('response_code')
+        description = nc_response.get('description')
+        response_status = nc_response.get('status')
+        cancellation_reason = nc_response.get('status_reason')
+        
+        # Parse timestamp fields
+        status_date = parse_timestamp(nc_response.get('status_date'))
+        creation_date = parse_timestamp(nc_response.get('creation_date'))
+        subscriber_cancellation_date = parse_timestamp(nc_response.get('subscriber_cancellation_date'))
+        change_window_date = parse_timestamp(nc_response.get('change_window_date'))
+        
+        recipient_operator_code = nc_response.get('recipient_operator_code')
+        donor_operator_code = nc_response.get('donor_operator_code')
+        
+        # Determine status_nc based on response_status and success
+        status_nc = "PENDING"
+        status_bss = "PROCESSING"
+        if success and response_status:
+            status_nc = f"RETURN_{response_status}"
+            status_bss = f"CHANGED_TO_{response_status}"
+        elif not success:
+            status_nc = "FAILED"
+            status_bss = "FAILED"
+        
+        # Calculate scheduled_at - ALWAYS set for next check if status is not final
+        if success and response_status not in ['BDEF']:  # Add other final statuses as needed
+            scheduled_at = datetime.now() + timedelta(seconds=settings.TIME_DELTA_FOR_RETURN_STATUS_CHECK)
+        else:
+            # For final statuses, don't schedule next check
+            scheduled_at = None
+        
+        # Get database connection
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # Always update the record with new NC response data
+        update_query = """
+        UPDATE return_requests 
+        SET response_code = %s, 
+            description = %s, 
+            response_status = %s, 
+            cancellation_reason = %s, 
+            status_date = %s, 
+            creation_date = %s, 
+            subscriber_cancellation_date = %s, 
+            change_window_date = %s, 
+            recipient_operator_code = %s, 
+            donor_operator_code = %s, 
+            scheduled_at = %s, 
+            status_nc = %s, 
+            status_bss = %s, 
+            updated_at = NOW()
+        WHERE reference_code = %s
+        """
+
+        values = (
+            response_code, 
+            description, 
+            response_status, 
+            cancellation_reason, 
+            status_date, 
+            creation_date, 
+            subscriber_cancellation_date, 
+            change_window_date, 
+            recipient_operator_code, 
+            donor_operator_code, 
+            scheduled_at,
+            status_nc,
+            status_bss,
+            reference_code
+        )
+        
+        # Execute the update
+        cursor.execute(update_query, values)
+        connection.commit()
+
+        # Check if any rows were affected
+        if cursor.rowcount == 0:
+            logger.warning("No rows updated for reference_code: %s", reference_code)
+        else:
+            logger.info("Successfully updated return request for reference_code: %s with status: %s, scheduled_at: %s", 
+                       reference_code, response_status, scheduled_at)
+                
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        logger.error("Failed to update return request for reference_code %s: %s", reference_code, str(e))
+        # Don't re-raise to avoid breaking the main flow
+    finally:
+        # Always close cursor and connection
+        if cursor:
+            cursor.close()
+        if connection:
             connection.close()

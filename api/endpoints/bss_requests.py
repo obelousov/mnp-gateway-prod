@@ -139,13 +139,13 @@ class PersonalData(BaseModel):
         description="First name | WSDL: `<por:nombre>`",
         examples=["Jose", "Maria"]
     )
-    first_surname: Optional[str] = Field(
-        None,
+    first_surname: str = Field(
+        ...,
         description="First surname | WSDL: `<por:primerApellido>`",
         examples=["Garcia", "Lopez"]
     )
     second_surname: Optional[str] = Field(
-        None,
+        "",
         description="Second surname | WSDL: `<por:segundoApellido>`",
         examples=["Martinez", "Fernandez"]
     )
@@ -176,7 +176,7 @@ class Subscriber(BaseModel):
     company_data: Optional[CompanyData] = None
 
     @validator('identification_document')
-    def validate_document_matches_subscriber_type(cls, v, values):
+    def validate_document_matches_subscriber_type(cls, v, values): # pylint: disable=no-self-argument
         """Validate that document type matches subscriber type"""
         if 'subscriber_type' not in values:
             return v
@@ -193,7 +193,8 @@ class Subscriber(BaseModel):
         return v
 
     @validator('personal_data')
-    def validate_personal_data(cls, v, values):
+    def validate_personal_data(cls, v, values): # pylint: disable=no-self-argument
+        """Validate that personal_data is provided for person subscribers"""
         if 'subscriber_type' not in values:
             return v
             
@@ -202,7 +203,8 @@ class Subscriber(BaseModel):
         return v
 
     @validator('company_data')
-    def validate_company_data(cls, v, values):
+    def validate_company_data(cls, v, values): # pylint: disable=no-self-argument
+        """Validate that company_data is provided for company subscribers"""
         if 'subscriber_type' not in values:
             return v
             
@@ -215,30 +217,30 @@ class PortInRequest(BaseModel):
     Pydantic class to validate Port-In request payload SOAP method: `SolicitarAltaPortabilidadMovil`
     WSDL Reference: 'por:peticionCrearSolicitudIndividualAltaPortabilidadMovil>'
     """
-    country_code: str = Field(
-        ...,
-        description="ISO 3166-1 alpha-3 country code",
-        examples=["ESP", "ITA"]
-    )
-    @validator('country_code')
-    def validate_country_code(cls, v):  # pylint: disable=no-self-argument
-        """Validate country_code
-        - Must be 3 letters of ISO country code
-        - MNP API supports following country codes: ESP, ITA
-        """
-        allowed_country_codes = ["ESP", "ITA"]
+    # country_code: str = Field(
+    #     ...,
+    #     description="ISO 3166-1 alpha-3 country code",
+    #     examples=["ESP", "ITA"]
+    # )
+    # @validator('country_code')
+    # def validate_country_code(cls, v):  # pylint: disable=no-self-argument
+    #     """Validate country_code
+    #     - Must be 3 letters of ISO country code
+    #     - MNP API supports following country codes: ESP, ITA
+    #     """
+    #     allowed_country_codes = ["ESP", "ITA"]
   
-        # Validate the country_code value (v is the actual value, not a dict)
-        if v not in allowed_country_codes:
-            raise ValueError(f'country_code must be one of: {", ".join(allowed_country_codes)}')
+    #     # Validate the country_code value (v is the actual value, not a dict)
+    #     if v not in allowed_country_codes:
+    #         raise ValueError(f'country_code must be one of: {", ".join(allowed_country_codes)}')
         
-        return v
+    #     return v
 
-    session_code: str = Field(
-        ...,
-        description="Unique session identifier | WSDL: `<v1:codigoSesion>`",
-        examples=["13", "ABC123"]
-    )
+    # session_code: str = Field(
+    #     ...,
+    #     description="Unique session identifier | WSDL: `<v1:codigoSesion>`",
+    #     examples=["13", "ABC123"]
+    # )
     requested_at: date = Field(
         ...,
         description="Request date | WSDL: `<por:fechaSolicitudPorAbonado>`",
@@ -291,7 +293,8 @@ class PortInRequest(BaseModel):
         examples=["299-TRAC_12"]
     )
     @validator('contract_number')
-    def validate_contract_number(cls, v, values):
+    def validate_contract_number(cls, v, values): # pylint: disable=no-self-argument
+        """Validate contract_number:"""
         if not v:
             raise ValueError("Contract number is required")
         
@@ -320,7 +323,8 @@ class PortInRequest(BaseModel):
         examples=["906299"]
     )
     @validator('routing_number')
-    def validate_routing_number(cls, v):
+    def validate_routing_number(cls, v): # pylint: disable=no-self-argument
+        """Validate routing_number (NRN)"""
         if not v:
             raise ValueError("Routing number (NRN) is required")
         
@@ -346,18 +350,20 @@ class PortInRequest(BaseModel):
     )
 
     @validator('desired_porting_date')
-    def validate_and_format_datetime(cls, v):
+    def validate_and_format_datetime(cls, v): # pylint: disable=no-self-argument
+        """Validate and format desired_porting_date to 'YYYY-MM-DDT02:00:00'"""
         if v is None:
             return None
             
         if isinstance(v, datetime):
-            # Convert datetime object to required string format
-            return v.strftime('%d/%m/%Y %H:%M:%S')
+            # Convert datetime object to required string format with fixed time
+            return v.strftime('%Y-%m-%d') + 'T02:00:00'
         elif isinstance(v, str):
             # Try to parse various formats and convert to required format
             formats_to_try = [
-                '%d/%m/%Y %H:%M:%S',  # Exact required format
-                '%Y-%m-%d %H:%M:%S',  # ISO with time
+                '%Y-%m-%dT%H:%M:%S',  # Exact required format
+                '%d/%m/%Y %H:%M:%S',  # DD/MM/YYYY with time
+                '%Y-%m-%d %H:%M:%S',  # ISO with space
                 '%d/%m/%Y',           # Date only with slashes
                 '%Y-%m-%d',           # ISO date only
             ]
@@ -365,13 +371,43 @@ class PortInRequest(BaseModel):
             for fmt in formats_to_try:
                 try:
                     parsed_dt = datetime.strptime(v, fmt)
-                    return parsed_dt.strftime('%d/%m/%Y %H:%M:%S')
+                    # Always format as YYYY-MM-DDT02:00:00 regardless of input time
+                    return parsed_dt.strftime('%Y-%m-%d') + 'T02:00:00'
                 except ValueError:
                     continue
                     
-            raise ValueError('Date must be in DD/MM/YYYY HH:MM:SS format (e.g., "20/10/2025 02:00:00")')
+            raise ValueError('Date must be in YYYY-MM-DDT02:00:00 format or other common date formats')
         
         raise ValueError('Invalid date format')
+
+    # @validator('desired_porting_date')
+    # def validate_and_format_datetime(cls, v): # pylint: disable=no-self-argument
+    #     """Validate and format desired_porting_date to 'DD/MM/YYYY HH:MM:SS'"""
+    #     if v is None:
+    #         return None
+            
+    #     if isinstance(v, datetime):
+    #         # Convert datetime object to required string format
+    #         return v.strftime('%d/%m/%Y %H:%M:%S')
+    #     elif isinstance(v, str):
+    #         # Try to parse various formats and convert to required format
+    #         formats_to_try = [
+    #             '%d/%m/%Y %H:%M:%S',  # Exact required format
+    #             '%Y-%m-%d %H:%M:%S',  # ISO with time
+    #             '%d/%m/%Y',           # Date only with slashes
+    #             '%Y-%m-%d',           # ISO date only
+    #         ]
+            
+    #         for fmt in formats_to_try:
+    #             try:
+    #                 parsed_dt = datetime.strptime(v, fmt)
+    #                 return parsed_dt.strftime('%d/%m/%Y %H:%M:%S')
+    #             except ValueError:
+    #                 continue
+                    
+    #         raise ValueError('Date must be in DD/MM/YYYY HH:MM:SS format (e.g., "20/10/2025 02:00:00")')
+        
+    #     raise ValueError('Invalid date format')
 
     iccid: Optional[str] = Field(
         None,
@@ -381,7 +417,8 @@ class PortInRequest(BaseModel):
         max_length=20
     )
     @validator('iccid')
-    def validate_iccid(cls, v):
+    def validate_iccid(cls, v): # pylint: disable=no-self-argument
+        """Validate ICCID:"""
         if not v:
             raise ValueError("ICCID is required")
         
@@ -417,11 +454,13 @@ class PortInRequest(BaseModel):
     )
 
 class PortInResponse(BaseModel):
+    """ Pydantic class to validate Port-In response payload """
     id: int = Field(..., examples=[12345], description="Internal request ID")
     success: bool = Field(..., examples=[True, False])
     response_code: Optional[str] = Field(None, examples=["0000 00000", "ACCS PERME"])
     description: Optional[str] = Field(None, examples=["Operation successful", "No es posible invocar esta operación en horario inhábil"])
     reference_code: Optional[str] = Field(None, examples=["REF_12345"])
+    porting_window_date: Optional[str] = Field(None, examples=["2025-11-12T02:00:00+01:00"], description="Scheduled porting date and time")
 
 @router.post(
     '/port-in', 
@@ -489,46 +528,80 @@ async def portin_request(alta_data: PortInRequest):
         logger.info("Port-in request saved with ID: %s", new_request_id)
         # 3. Launch the background task, passing the ID of the new record
         # submit_to_central_node.delay(new_request_id) # Asynchronous version
-        success, response_code, description, reference_code = submit_to_central_node_online(new_request_id)  # Synchronous version for testing
+        success, response_code, description, reference_code, porting_window_date = submit_to_central_node_online(new_request_id)  # Synchronous version for testing
+
+    #     response_data = {
+    #     "id": new_request_id,
+    #     "success": success,
+    #     "response_code": response_code,
+    #     "description": description,
+    #     "reference_code": reference_code
+    # }
 
         response_data = {
-        "id": new_request_id,
-        "success": success,
-        "response_code": response_code,
-        "description": description,
-        "reference_code": reference_code
-    }
+            "id": new_request_id,
+            "success": success,
+            "reference_code":reference_code,
+            "response_code": response_code,
+            "description": description or f"Status update for MNP request {new_request_id}",
+            # "error_fields": error_fields or [],
+            "porting_window_date": porting_window_date or ""
+        }
 
+        logger.info("Port-in response: %s", response_data)
         # Determine appropriate status code based on success and response_code
         if success:
-            return response_data  # FastAPI will use 200 by default, or you can set 202
+            return response_data  # 200 OK for successful operations
         else:
-            # Map different error types to appropriate HTTP status codes
-            if response_code in ["NOT_FOUND", "VALIDATION_ERROR"]:
+            # Business logic errors return 200 OK with error details
+            if response_code == "ACCS PERME" or re.match(r"^AREC", (response_code or "")):
+                return response_data  # 200 OK with business error details
+    
+        # Technical errors that should raise proper HTTP exceptions
+            elif response_code in ["NOT_FOUND", "VALIDATION_ERROR"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=response_data
-                )
+            )
             elif response_code == "HTTP_ERROR":
                 raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,  # or 504 Gateway Timeout
-                    detail=response_data
-                )
-            elif response_code == "ACCS PERME":  # Outside business hours
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=response_data
-                )
-            elif re.match(r"^AREC", (response_code or "")):  # All AREC errors
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=response_data
-                )
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=response_data
+            )
             else:
                 raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=response_data
-                )
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=response_data
+            )
+        # if success:
+        #     return response_data  # FastAPI will use 200 by default, or you can set 202
+        # else:
+        #     # Map different error types to appropriate HTTP status codes
+        #     if response_code in ["NOT_FOUND", "VALIDATION_ERROR"]:
+        #         raise HTTPException(
+        #             status_code=status.HTTP_400_BAD_REQUEST,
+        #             detail=response_data
+        #         )
+        #     elif response_code == "HTTP_ERROR":
+        #         raise HTTPException(
+        #             status_code=status.HTTP_502_BAD_GATEWAY,  # or 504 Gateway Timeout
+        #             detail=response_data
+        #         )
+        #     elif response_code == "ACCS PERME":  # Outside business hours
+        #         raise HTTPException(
+        #             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        #             detail=response_data
+        #         )
+        #     elif re.match(r"^AREC", (response_code or "")):  # All AREC errors
+        #         raise HTTPException(
+        #             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        #             detail=response_data
+        #         )
+        #     else:
+        #         raise HTTPException(
+        #             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        #             detail=response_data
+        #         )
 
         # # 4. Tell the BSS "We got it, processing now."
         # return {
@@ -602,13 +675,14 @@ class CancelPortabilityRequest(BaseModel):
         description="Indicates if cancellation is initiated by donor operator | WSDL: `<por:cancelacionIniciadaPorDonante>`",
         examples=[True, False]
     )
-    session_code: Optional[str] = Field(
-        None,
-        description="Session identifier for tracking | WSDL: `<v1:codigoSesion>`",
-        examples=["SESSION_001", "13"]
-    )
+    # session_code: Optional[str] = Field(
+    #     None,
+    #     description="Session identifier for tracking | WSDL: `<v1:codigoSesion>`",
+    #     examples=["SESSION_001", "13"]
+    # )
 
 class CancelPortabilityResponse(BaseModel):
+    """ Model for portability cancellation response """
     message: str = Field(..., examples=["Cancellation request accepted and queued for processing"])
     request_id: int = Field(..., examples=[12345], description="Internal cancellation request ID")
     reference_code: str = Field(..., examples=["PORT_IN_12345"], description="Original reference code")
@@ -1194,9 +1268,10 @@ async def reject_port_out_request(request: RejectPortOutRequest):
         # Convert Pydantic model to dict for existing functions
         alta_data = request.dict()
         # Convert enum to its string value
-        if 'cancellation_reason' in alta_data and alta_data['cancellation_reason']:
-            # alta_data['cancellation_reason'] = alta_data['cancellation_reason'].value
-            alta_data['cancellation_reason'] = alta_data['cancellation_reason']
+        alta_data['cancellation_reason'] = request.cancellation_reason.value  # Direct access with .value
+        # if 'cancellation_reason' in alta_data and alta_data['cancellation_reason']:
+        #     # alta_data['cancellation_reason'] = alta_data['cancellation_reason'].value
+        #     alta_data['cancellation_reason'] = alta_data['cancellation_reason']
 
         # 1. Log the incoming payload
         # log_payload('BSS', 'PORT_OUT_REJECT', 'REQUEST', str(alta_data))
@@ -1431,6 +1506,7 @@ class PersonalDataLegal(BaseModel):
     
     @validator('company_name')
     def validate_company_name(cls, v): # pylint: disable=no-self-argument
+        """Ensure company name is provided and valid for legal entities"""
         if not v or not v.strip():
             raise ValueError("Company name is required for legal entities")
         if len(v.strip()) < 2:
@@ -1518,6 +1594,7 @@ class PortInRequestLegal(PortInRequest):
             raise ValueError('This endpoint only supports legal entities (subscriber_type must be "company").')
 
         doc_type = v.identification_document.document_type
+        # if doc_type not in ["CIF", "NIF", "VAT"]:
         if doc_type != "CIF":
             raise ValueError(
                 f'Invalid document_type "{doc_type}" for company subscriber. Legal entities must use "CIF".'
@@ -1705,7 +1782,7 @@ async def portin_request_legal(alta_data: PortInRequestLegal):
         
         # 3. Launch the background task, passing the ID of the new record
         # submit_to_central_node_legal.delay(new_request_id) # Asynchronous version for legal entities
-        success, response_code, description, reference_code = submit_to_central_node_online(new_request_id)  # Synchronous version for legal entities
+        success, response_code, description, reference_code, porting_window_date = submit_to_central_node_online(new_request_id)  # Synchronous version for legal entities
 
         response_data = {
             "id": new_request_id,
@@ -1713,7 +1790,8 @@ async def portin_request_legal(alta_data: PortInRequestLegal):
             "response_code": response_code,
             "description": description,
             "reference_code": reference_code,
-            "entity_type": "LEGAL"
+            "porting_window_date": "" if not porting_window_date else porting_window_date
+            # "entity_type": "LEGAL"
         }
 
         # Determine appropriate status code based on success and response_code

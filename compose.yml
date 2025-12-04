@@ -60,9 +60,9 @@ services:
       - TZ=${TIME_ZONE}
     volumes:
       - db_data:/var/lib/mysql
-    # ports:
+    ports:
     #   # - "3307:3306"
-    #   - "127.0.0.1:3307:3306"  # Only expose on host's localhost
+      - "127.0.0.1:3307:3306"  # Only expose on host's localhost for alembic migrations
     networks:
       - internal-network
     healthcheck:
@@ -212,6 +212,30 @@ services:
     restart: unless-stopped  
     # networks:
     #   - internal-network
+
+  alembic:
+      container_name: alembic-migrations
+      build: . # Use the same Dockerfile as MNP app
+      # build:
+      #   context: ./alembic-migrations
+      #   dockerfile: Dockerfile.alembic
+      # working_dir: /app
+      working_dir: /app/alembic-migrations  # Changed working directory
+      volumes:
+        # - ./alembic-migrations:/app  # Mount the alembic-migrations directory
+        - ./alembic-migrations:/app/alembic-migrations  # Mount alembic directory
+      env_file:
+        - .env
+      environment:
+        DATABASE_URL: "mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@${DB_HOST}:${DB_PORT}/${MYSQL_DATABASE}"
+        TZ: ${TIME_ZONE}
+      networks:
+        - internal-network
+      depends_on:
+        db:
+          condition: service_healthy
+      command: tail -f /dev/null
+      restart: unless-stopped
 
 volumes:
   logs:
