@@ -21,3 +21,6 @@ prometheus_client
 python-json-logger==2.0.7
 xmlschema
 SQLAlchemy
+alembic
+PyMySQL
+mysqlclient==2.2.0

@@ -215,12 +215,15 @@ services:
 
   alembic:
       container_name: alembic-migrations
-      build:
-        context: ./alembic-migrations
-        dockerfile: Dockerfile.alembic
-      working_dir: /app
+      build: . # Use the same Dockerfile as MNP app
+      # build:
+      #   context: ./alembic-migrations
+      #   dockerfile: Dockerfile.alembic
+      # working_dir: /app
+      working_dir: /app/alembic-migrations  # Changed working directory
       volumes:
-        - ./alembic-migrations:/app  # Mount the alembic-migrations directory
+        # - ./alembic-migrations:/app  # Mount the alembic-migrations directory
+        - ./alembic-migrations:/app/alembic-migrations  # Mount alembic directory
       env_file:
         - .env
       environment:
@@ -233,7 +236,7 @@ services:
           condition: service_healthy
       command: tail -f /dev/null
       restart: unless-stopped
-      
+
 volumes:
   logs:
   db_data:
