@@ -9,3 +9,5 @@ alembic-migrations/alembic.ini
 tests/mnp.xsd
 tests/italy_xsd.py
 tests/xsd.py
+alembic-migrations/alembic/versions_backup/
+
