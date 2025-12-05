@@ -1,0 +1,42 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: mnp-gw-celery-worker
+  name: celery-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mnp-gw-celery-worker
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        vault.security.banzaicloud.io/enable-json-log: 'true'
+        vault.security.banzaicloud.io/log-level: warn
+        vault.security.banzaicloud.io/vault-addr: http://vault.platform.svc:8200
+        vault.security.banzaicloud.io/vault-env-daemon: 'true'
+        vault.security.banzaicloud.io/vault-ignore-missing-secrets: 'true'
+        vault.security.banzaicloud.io/vault-role: apps-default-role
+      labels:
+        app: mnp-gw-celery-worker
+    spec:
+      serviceAccountName: mnp-gw
+      containers:
+        - args:
+            - celery
+            - -A
+            - celery_app:app
+            - worker
+            - --loglevel=info
+          env:
+            - name: CELERY_BROKER_URL
+              value: "amqp://${vault:rabbitmq/creds/mnp-mnp-gw#username}:${vault:rabbitmq/creds/mnp-mnp-gw#password}@rabbitmq-platform.platform.svc:5672/mnp-gw"
+            - name: CELERY_RESULT_BACKEND
+              value: "rpc://"
+          image: {{ .Values.imageBase }}:{{ .Values.imageVersion | default .Chart.AppVersion }}
+          name: celery-worker-mnp
+      restartPolicy: Always

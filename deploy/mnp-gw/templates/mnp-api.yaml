@@ -1,0 +1,68 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    labels:
+        app: mnp-gw-api
+    name: mnp-gw-api
+spec:
+    replicas: 2
+    selector:
+        matchLabels:
+            app: mnp-gw-api
+    strategy:
+        type: Recreate    
+    template:
+        metadata:
+            annotations:
+                vault.security.banzaicloud.io/enable-json-log: 'true'
+                vault.security.banzaicloud.io/log-level: warn
+                vault.security.banzaicloud.io/vault-addr: http://vault.platform.svc:8200
+                vault.security.banzaicloud.io/vault-env-daemon: 'true'
+                vault.security.banzaicloud.io/vault-ignore-missing-secrets: 'true'
+                vault.security.banzaicloud.io/vault-role: apps-default-role
+            labels:
+                app: mnp-gw-api
+        spec:
+            serviceAccountName: mnp-gw
+            containers:
+              - args:
+                  - uvicorn
+                  - main:app
+                  - --host
+                  - 0.0.0.0
+                  - --port
+                  - "8080"
+                env:
+                  - name: DB_USER
+                    value: ${vault:database/creds/mnp-mnp-gw-qvt-mariadb#username}
+                  - name: DB_PASSWORD
+                    value: ${vault:database/creds/mnp-mnp-gw-qvt-mariadb#password}
+                  - name: DB_NAME
+                    value: mnp_gw
+                  - name: DB_HOST
+                    value: qvt-mariadb-main.platform.svc
+                  - name: DB_PORT
+                    value: '3306'
+                  - name: REDIS_URL
+                    value: redis://${vault:database/creds/readwrite-role-redis-platform#username}:${vault:database/creds/readwrite-role-redis-platform#password}@redis-platform-master.platform.svc:6379/0
+                image: {{ .Values.imageBase }}:{{ .Values.imageVersion | default .Chart.AppVersion }}
+                name: mnp-api
+                ports:
+                  - containerPort: 8080
+                    protocol: TCP
+            restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: mnp-gw-api
+  name: mnp-gw-api
+spec:
+  ports:
+    - name: "8080"
+      port: 8080
+      targetPort: 8080
+  selector:
+    app: mnp-gw-api
