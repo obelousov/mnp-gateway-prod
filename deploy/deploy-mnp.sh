@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-VERSION="1-prerelease"
+VERSION="2-prerelease"
 
 if [[ "$(docker images -q "local/mnp-gw:$VERSION" 2> /dev/null)" == "" ]]; then
     # Here we build the docker image locally as "local/mnp-gw:$VERSION"

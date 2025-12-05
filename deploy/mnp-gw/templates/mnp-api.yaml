@@ -42,6 +42,8 @@ spec:
                     value: mnp_gw
                   - name: DB_HOST
                     value: qvt-mariadb-main.platform.svc
+                  - name: DB_PORT
+                    value: '3306'
                   - name: REDIS_URL
                     value: redis://${vault:database/creds/readwrite-role-redis-platform#username}:${vault:database/creds/readwrite-role-redis-platform#password}@redis-platform-master.platform.svc:6379/0
                 image: {{ .Values.imageBase }}:{{ .Values.imageVersion | default .Chart.AppVersion }}

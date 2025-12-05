@@ -1,0 +1,53 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-upgrade-db
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+  annotations:
+    # This is what defines this resource as a hook. Without this line, the
+    # job is considered part of the release.
+    "helm.sh/hook": post-install, post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    metadata:
+      name: "{{ .Release.Name }}"
+      labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+        helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+      annotations:
+        vault.security.banzaicloud.io/enable-json-log: 'true'
+        vault.security.banzaicloud.io/log-level: warn
+        vault.security.banzaicloud.io/vault-addr: http://vault.platform.svc:8200
+        vault.security.banzaicloud.io/vault-env-daemon: 'true'
+        vault.security.banzaicloud.io/vault-ignore-missing-secrets: 'true'
+        vault.security.banzaicloud.io/vault-role: apps-default-role
+    spec:
+      serviceAccountName: mnp-gw
+      restartPolicy: Never
+      containers:
+      - name: post-install-job
+        image: {{ .Values.imageBase }}:{{ .Values.imageVersion | default .Chart.AppVersion }}
+        command: 
+            - /bin/sh
+            - '-c'
+            - |
+              cd alembic-migrations
+              alembic -c alembic-k8s.ini upgrade head
+        env:
+            - name: DB_USER
+              value: ${vault:database/creds/mnp-mnp-gw-qvt-mariadb#username}
+            - name: DB_PASSWORD
+              value: ${vault:database/creds/mnp-mnp-gw-qvt-mariadb#password}
+            - name: DB_NAME
+              value: mnp_gw
+            - name: DB_HOST
+              value: qvt-mariadb-main.platform.svc
+            - name: DB_PORT
+              value: '3306'
