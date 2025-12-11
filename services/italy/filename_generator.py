@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Optional
 import os
 import json
+import random
 
 class FilenameGenerator:
     """Generate filenames according to Italy MNP specifications"""
@@ -230,3 +231,47 @@ def parse_mnp_filename(filename: str) -> dict:
 def generate_daily_sequence_number(sender_operator: str, recipient_operator: str) -> str:
     """Generate daily sequence number for file_id"""
     return filename_generator.generate_daily_sequence_number(sender_operator, recipient_operator)
+
+def generate_recipient_request_code(
+    recipient_operator_code: str,
+    custom_timestamp: Optional[datetime] = None
+) -> str:
+    """
+    Generate a recipient request code according to Italy MNP XSD specification.
+    
+    Format: [OPERATOR][YYMMDDHHMMSS][SEQUENCE]
+    Total length: 4 (operator) + 12 (timestamp) + 2 (sequence) = 18 characters max
+    
+    Args:
+        recipient_operator_code: 4-character operator code (e.g., 'LMIT', 'NOVA')
+        custom_timestamp: Optional datetime to use (defaults to current UTC time)
+    
+    Returns:
+        str: 18-character recipient request code
+    
+    Example:
+        generate_recipient_request_code('LMIT') → 'LMIT25120621190342'
+        (LMIT + 25-12-06 21:19:03 + sequence 42)
+    """
+    # Validate operator code
+    if not recipient_operator_code or len(recipient_operator_code) != 4:
+        raise ValueError(f"recipient_operator_code must be exactly 4 characters, got: {recipient_operator_code}")
+    
+    # Use provided timestamp or current UTC time
+    timestamp = custom_timestamp or datetime.utcnow()
+    
+    # Format: YYMMDDHHMMSS (12 characters)
+    timestamp_str = timestamp.strftime('%y%m%d%H%M%S')  # %y = 2-digit year
+    
+    # Generate 2-digit random sequence (00-99)
+    # You could use database sequence instead for true uniqueness
+    sequence = f"{random.randint(0, 99):02d}"
+    
+    # Combine: 4 + 12 + 2 = 18 characters total
+    request_code = f"{recipient_operator_code}{timestamp_str}{sequence}"
+    
+    # Double-check length (should always be 18)
+    if len(request_code) != 18:
+        raise ValueError(f"Generated request code length invalid: {len(request_code)} characters")
+    
+    return request_code

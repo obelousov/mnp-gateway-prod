@@ -214,3 +214,190 @@ class ItalyPortInRequest(Base):
     
     # Scheduled processing time
     scheduled_at = Column(DateTime, comment='When this request is scheduled for processing')
+
+class ItalyAllPortRequests(Base):
+    """Only 7 essential columns + XML"""
+    __tablename__ = 'italy_port_requests'
+    
+    id = Column(Integer, primary_key=True)
+    recipient_request_code = Column(String(50), unique=True, index=True)
+    msisdn = Column(String(20), index=True)
+    message_type_code = Column(String(2), index=True)
+    process_status = Column(String(50), default='RECEIVED', index=True)
+    cut_over_date = Column(Date, index=True)
+    xml = Column(Text, nullable=False)
+    created_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), index=True)
+    updated_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
+    
+    # Relationships
+    status_history = relationship(
+        "ItalyPortInStatusHistory", 
+        back_populates="request",
+        cascade="all, delete-orphan",
+        lazy="dynamic"
+    )
+    
+    scheduled_actions = relationship(
+        "ItalyPortInScheduledAction", 
+        back_populates="request",
+        cascade="all, delete-orphan",
+        lazy="dynamic"
+    )
+    
+    # Composite indexes for common queries
+    __table_args__ = (
+        Index('idx_request_msisdn_status', 'msisdn', 'process_status'),
+        Index('idx_request_type_status', 'message_type_code', 'process_status'),
+        Index('idx_request_cutover_status', 'cut_over_date', 'process_status'),
+        {
+            'mysql_engine': 'InnoDB',
+            'mysql_charset': 'utf8mb4',
+            'comment': 'Main table for Italy MNP porting requests'
+        }
+    )
+
+
+class ItalyPortInStatusHistory(Base):
+    __tablename__ = "italy_port_in_status_history"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Foreign key to main request table
+    portin_request_id = Column(
+        Integer, 
+        ForeignKey("italy_port_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    
+    # Consistent with main table
+    message_type_code = Column(  # Changed from 'message_type'
+        String(2),  # Changed from String(5) to match main table
+        nullable=False,
+        comment='Message type code (1-13) when status changed'
+    )
+    
+    # field for clarity
+    status_reason = Column(
+        String(100),
+        nullable=True,
+        comment='Why status changed: timeout, manual, system, etc.'
+    )
+    
+    old_status = Column(String(50))
+    new_status = Column(String(50), nullable=False)
+    
+    payload = Column(
+        JSON,
+        nullable=True,
+        comment='Additional context: error details, response XML, etc.'
+    )
+    
+    created_at = Column(
+        TIMESTAMP, 
+        server_default=text('CURRENT_TIMESTAMP'),
+        nullable=False,
+        index=True
+    )
+    
+    # Relationship is back-populated
+    request = relationship(
+        "ItalyAllPortRequests",
+        back_populates="status_history"
+    )
+    
+    __table_args__ = (
+        # Composite indexes for common queries
+        Index('idx_status_history_request_status', 'portin_request_id', 'created_at'),
+        # index for status queries
+        Index('idx_status_history_new_status', 'new_status', 'created_at'),
+        {
+            'mysql_engine': 'InnoDB',
+            'mysql_charset': 'utf8mb4',
+            'comment': 'Audit trail of all status changes for porting requests'
+        }
+    )
+
+class ItalyPortInScheduledAction(Base):
+    __tablename__ = "italy_port_in_scheduled_actions"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Foreign key to main request table
+    portin_request_id = Column(
+        Integer, 
+        ForeignKey("italy_port_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    
+    action_type = Column(
+        String(30), 
+        nullable=False,
+        comment='SEND_MSG2, CHECK_STATUS, RETRY, NOTIFY_BSS, CLEANUP'
+    )
+    
+    scheduled_at = Column(
+        DateTime, 
+        nullable=False,
+        index=True,
+        comment='When to execute (UTC)'
+    )
+    
+    executed_at = Column(
+        DateTime, 
+        index=True,
+        nullable=True  # Should be nullable for pending actions
+    )
+    
+    # Status field with defined states
+    status = Column(
+        String(20),
+        server_default="PENDING", 
+        nullable=False,
+        comment='PENDING, EXECUTING, COMPLETED, FAILED, CANCELLED'
+    )
+    
+    retry_count = Column(Integer, default=0)
+    last_error = Column(Text)
+    
+    # Consistent lengths   
+    depends_on_message_type = Column(
+        String(2),  # Changed from String(5) to match message_type_code
+        comment='Wait for this message type (1-13) before executing'
+    )
+    
+    depends_on_status = Column(
+        String(50),
+        comment='Wait for this status before executing'
+    )
+    
+    expires_at = Column(
+        DateTime,
+        comment='Hard stop - never execute after this (UTC)'
+    )
+    
+    created_at = Column(
+        TIMESTAMP, 
+        nullable=False,
+        server_default=text('CURRENT_TIMESTAMP')
+    )
+    
+    # Relationship is back-populated
+    request = relationship(
+        "ItalyAllPortRequests",
+        back_populates="scheduled_actions"
+    )
+    
+    __table_args__ = (
+        # Indexes for common queries 
+        Index('idx_scheduled_due', 'status', 'scheduled_at'),
+        Index('idx_scheduled_dependencies', 'depends_on_message_type', 'depends_on_status'),
+        # Index for cleanup queries
+        Index('idx_scheduled_expired', 'status', 'expires_at'),
+        {
+            'mysql_engine': 'InnoDB',
+            'mysql_charset': 'utf8mb4',
+            'comment': 'Future actions scheduled for porting requests'
+        }
+    )
