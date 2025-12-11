@@ -9,6 +9,7 @@ from services.italy.filename_generator import generate_mnp_filename, generate_xm
 import re
 import os
 import json
+from services.italy.database_services import save_portin_request
 
 router = APIRouter(tags=["Italy: Portability Operations"])
 
