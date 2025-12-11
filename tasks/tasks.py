@@ -326,7 +326,7 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
         # fields = ["codigoRespuesta", "descripcion","codigoReferencia","estado"]
         # response_code, description, reference_code, estado  = parse_soap_response_nested_multi(response.text, fields) 
 
-        fields = ["tipoProceso", "codigoRespuesta", "descripcion", "codigoReferencia", "estado","fechaVentanaCambio","fechaCreacion","causaRechazo"]
+        fields = ["tipoProceso", "codigoRespuesta", "descripcion", "codigoReferencia", "estado","fechaVentanaCambio","fechaCreacion","causaRechazo","fechaRechazo"]
         result = parse_soap_response_nested_multi(response.text, fields, reference_code)
 
         # Ensure result is an iterable (the parser may return None) to avoid typing/None issues
@@ -343,6 +343,8 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
         description = result_dict.get("descripcion")
         response_code = result_dict.get("codigoRespuesta")
         porting_window = result_dict.get("fechaVentanaCambio")
+        reject_reason = result_dict.get("causaRechazo")
+        reject_date = result_dict.get("fechaRechazo")
         porting_window_db = convert_for_mysql_env_tz(porting_window) if porting_window else None
 
          
@@ -375,12 +377,13 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
                 reference_code = %s,
                 scheduled_at = %s,
                 porting_window = %s,
+                reject_reason = %s,
                 updated_at = NOW() 
                 WHERE id = %s
             """
         logger.debug("Update query %s, estado_old %s estado %s, status_nc %s, mnp_request_id %s, porting_window_db %s", 
         update_query, estado_old, estado, status_nc, mnp_request_id, porting_window_db)
-        cursor.execute(update_query, (estado,response_code, description, reference_code, scheduled_datetime, porting_window_db, mnp_request_id))
+        cursor.execute(update_query, (estado,response_code, description, reference_code, scheduled_datetime, porting_window_db, reject_reason, mnp_request_id))
         connection.commit()
         
         status_changed = (estado != estado_old)    # callback_bss.delay(mnp_request_id)
@@ -404,6 +407,8 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
                 msisdn,
                 response_code,
                 description,
+                reject_reason,
+                reject_date,
                 porting_window_date=porting_window_db,
                 error_fields=None
                 )
@@ -478,7 +483,7 @@ def check_status(self, mnp_request_id, session_code, msisdn,reference_code):
             connection.close()
 
 @app.task(bind=True, max_retries=3)
-def callback_bss(self, mnp_request_id, reference_code, session_code, response_status, msisdn, response_code, description, porting_window_date, error_fields=None):
+def callback_bss(self, mnp_request_id, reference_code, session_code, response_status, msisdn, response_code, description, reject_reason, reject_date, porting_window_date, error_fields=None):
     """
                  args=[mnp_request_id, reference_code, session_code, response_status, msisdn, response_code, description, porting_window_date, None],
     REST JSON POST to BSS Webhook with updated English field names
@@ -511,6 +516,8 @@ def callback_bss(self, mnp_request_id, reference_code, session_code, response_st
         "response_code": response_code,
         "response_status": response_status,
         "description": description or f"Status update for MNP request {mnp_request_id}",
+        "reject_reason": reject_reason or "",
+        "reject_date": reject_date or "",
         "error_fields": error_fields or [],
         "porting_window_date": porting_window_str or ""
     }

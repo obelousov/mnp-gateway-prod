@@ -1,17 +1,19 @@
 from fastapi import FastAPI, HTTPException, status, Depends,Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from contextlib import asynccontextmanager
 from api.endpoints import bss_requests, health, italy_requests
 from config import settings
 # from services.logger import logger
 from services.logger_simple import logger
 import secrets
 from api.v2.endpoints import health as health_v2
-from api.v1 import bss, metrics, orders, return_request, msisdn_status
+from api.v1 import bss, metrics, orders, return_request, msisdn_status, port_status
 from api.core.middleware import prometheus_middleware
 import logging
 from fastapi.logger import logger as fastapi_logger
-from api.v1.italy import type_1_activation
+from api.v1.italy import type_1_activation, type_1_activation_async
+from start import init_schema
 
 # Configure Uvicorn to use custom JSON logger
 uvicorn_logger = logging.getLogger("uvicorn")
@@ -32,12 +34,24 @@ fastapi_logger.setLevel(logger.level)
 
 logger.debug("Starting MNP Gateway API")
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # RUN ON STARTUP ONCE PER WORKER
+    init_schema(app)  
+    print("XML Schema initialized")
+
+    yield  # ---> Application is now running
+
+    # RUN ON SHUTDOWN
+    print("Shutting down")
+
 app = FastAPI(
     title=settings.API_TITLE,           # Refer as settings.API_TITLE
     description=settings.API_DESCRIPTION, # Refer as settings.API_DESCRIPTION  
     version=settings.API_VERSION, # Refer as settings.API_VERSION
     docs_url=None,  # Disable default docs
-    redoc_url=None  # Disable default redoc
+    redoc_url=None,  # Disable default redoc
+    lifespan=lifespan
 )
 
 # Custom middleware to log requests in JSON format
@@ -160,7 +174,14 @@ app.include_router(
 
 # include retrun request router
 app.include_router(
-    type_1_activation.router,
+    port_status.router,
+    prefix=settings.API_PREFIX,      # Refer as settings.API_V1_PREFIX
+    # tags=["BSS Webhook"]
+)
+
+# include retrun request router
+app.include_router(
+    type_1_activation_async.router,
     prefix=settings.API_PREFIX,      # Refer as settings.API_V1_PREFIX
     # tags=["BSS Webhook"]
 )

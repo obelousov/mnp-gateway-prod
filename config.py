@@ -5,8 +5,11 @@ import os
 from dotenv import load_dotenv # type: ignore
 import logging
 import pytz
-from datetime import datetime
+from datetime import datetime, time
 from distutils.util import strtobool
+
+# Import time service
+# from services.italy.time_services import time_service, ItalySchedulingSettings
 
 # Timezone configuration
 MADRID_TZ = pytz.timezone('Europe/Madrid')
@@ -24,38 +27,17 @@ def get_madrid_time_readable():
     return get_madrid_time().strftime("%Y-%m-%d %H:%M:%S %Z")
 
 # Load environment variables
-load_dotenv()
+# load_dotenv()
 
-# # Configure logging
-# logging.basicConfig(
-#     level=LOG_LEVEL,
-#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-#     handlers=[
-#         logging.FileHandler(LOG_FILE),
-#         logging.StreamHandler()
-#     ]
-# )
+# Detect if we are inside Kubernetes
+IN_K8S = "KUBERNETES_SERVICE_HOST" in os.environ
 
-# # Create a logger for this module
-# logger = logging.getLogger(__name__)
+# Load .env only when NOT in Kubernetes
+if not IN_K8S:
+    load_dotenv()
 
 SAVE_PAYLOAD_TO_LOG = int(os.getenv('SAVE_PAYLOAD_TO_LOG', '0'))
 PAYLOAD_LOG_FILE = os.getenv('PAYLOAD_LOG_FILE', 'payload.log')
-
-# # Configure PAYLOAD logger separately
-# payload_logger = logging.getLogger('payload_logger')
-# payload_logger.setLevel(logging.INFO)  # Payload logs are typically INFO level
-
-# # Prevent payload logs from propagating to root logger
-# payload_logger.propagate = False
-
-# # Create formatter for payload logs
-# payload_formatter = logging.Formatter('%(asctime)s - PAYLOAD - %(message)s')
-
-# # Create file handler for payload logs
-# payload_file_handler = logging.FileHandler(PAYLOAD_LOG_FILE)
-# payload_file_handler.setFormatter(payload_formatter)
-# payload_logger.addHandler(payload_file_handler)
 
 # Create a settings class or object to hold all configuration
 class Settings:
@@ -82,6 +64,7 @@ class Settings:
     DB_PASSWORD = os.getenv('DB_PASSWORD', '')
     DB_NAME = os.getenv('DB_NAME', 'mnp_database')
     DB_PORT = int(os.getenv('DB_PORT', "3306"))
+    DB_DRIVER = os.getenv('DB_DRIVER', 'mysql+pymysql')
 
     # SOAP Service Configuration
     #SOAP_URL = os.getenv(
@@ -131,6 +114,7 @@ class Settings:
     PAGE_COUNT_PORT_OUT = os.getenv('PAGE_COUNT_PORT_OUT', '')
 
     PENDING_REQUESTS_TIMEOUT = float(os.getenv('PENDING_REQUESTS_TIMEOUT', '60.0'))  # seconds
+    ITA_PENDING_REQUESTS_TIMEOUT = float(os.getenv('ITA_PENDING_REQUESTS_TIMEOUT', '900.0'))  # seconds
    
    # Logging Configuration
     LOG_FILE = os.getenv('LOG_FILE', 'mnp.log')
@@ -155,7 +139,29 @@ class Settings:
     APP_LOG_FILE = os.getenv('APP_LOG_FILE', '/var/log/mnp.log')
     PAYLOAD_LOG_FILE = os.getenv('PAYLOAD_LOG_FILE', '/var/log/payload.log')
     SAVE_PAYLOAD_TO_LOG = int(os.getenv('SAVE_PAYLOAD_TO_LOG', '3'))
+    
+    # Load all Italy MNP message schedules
+    ITA_MSG_SCHEDULES = {}
 
+    for msg_num in range(1, 13):  # assuming MSG1 to MSG12
+        days = os.getenv(f"ITA_MSG{msg_num}_DAYS")
+        start_time = os.getenv(f"ITA_MSG{msg_num}_START_TIME")
+        stop_time = os.getenv(f"ITA_MSG{msg_num}_STOP_TIME")
+
+        # Only add if days and times are defined
+        if days and start_time and stop_time:
+            ITA_MSG_SCHEDULES[msg_num] = {
+                "days": [d.strip() for d in days.split(",")],
+                "start_time": start_time,
+                "stop_time": stop_time
+            }
+
+    """Parse ITA vendors list from comma-separated string"""
+    ITA_VENDORS_LIST = []
+    vendors_str = os.getenv('ITA_VENDORS_LIST', '')
+    if vendors_str:
+        ITA_VENDORS_LIST = [v.strip() for v in vendors_str.split(',') if v.strip()]
+    
     # Database configuration as dict (for existing db_utils compatibility)
     @property
     def mysql_config(self) -> dict:
